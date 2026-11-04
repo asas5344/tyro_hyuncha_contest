@@ -23,6 +23,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
@@ -81,7 +82,8 @@ enum class InputMode(val label: String) {
 }
 
 /**
- * 주차 연습 화면: 왼쪽 탑뷰 + 오른쪽 조작 패널
+ * 주차 연습 화면: 탑뷰 전체 화면 + 아래쪽 작은 전진/후진 버튼.
+ * 실제 차량(Virtual Console) 입력을 기본으로 쓰고, 오른쪽 조작 패널은 차량 연결이 없을 때(화면 조작 백업)만 보임.
  * @param vehicle Pleos SDK. null이면 화면 조작만 가능
  */
 @Composable
@@ -91,7 +93,7 @@ fun ParkingScreen(
 ) {
     val car = initialCar
     val currentCar by rememberUpdatedState(car)
-    var mode by remember { mutableStateOf(InputMode.TOUCH) }
+    var mode by remember { mutableStateOf(if (vehicle != null) InputMode.VEHICLE else InputMode.TOUCH) }
     val touchInput = remember { TouchInput() }
     val vehicleInput = remember(vehicle) {
         vehicle?.let { VehicleInput(it) { currentCar.steeringRatio } }
@@ -165,23 +167,38 @@ fun ParkingScreen(
                     frame = { frame.longValue },
                     lock = lock,
                     waitingForBrake = input === vehicleInput && vehicleInput?.armed == false,
+                    vehicleStatus = if (input === vehicleInput) vehicleInput?.statusText() else null,
                     onRestart = ::restart,
                     modifier = Modifier.fillMaxSize(),
                 )
+                // 실제 차량 모드: 메뉴 대신 전진/후진과 다시 하기만 작게 띄움 (기어는 P 고정이라 방향은 앱에서 고름)
+                if (input === vehicleInput) {
+                    DirectionBar(
+                        direction = input.direction,
+                        onDirectionChange = { input.direction = it },
+                        onRestart = ::restart,
+                        modifier = Modifier
+                            .align(Alignment.BottomEnd)
+                            .padding(24.dp),
+                    )
+                }
             }
-            ControlPanel(
-                car = car,
-                mode = mode,
-                vehicleAvailable = vehicleInput != null,
-                onModeChange = { mode = it; restart() },
-                input = input,
-                touchInput = touchInput,
-                vehicleInput = vehicleInput,
-                onRestart = ::restart,
-                modifier = Modifier
-                    .width(panelWidth)
-                    .fillMaxHeight(),
-            )
+            // 화면 조작 백업 모드에서만 오른쪽 조작 패널을 보여줌
+            if (input === touchInput) {
+                ControlPanel(
+                    car = car,
+                    mode = mode,
+                    vehicleAvailable = vehicleInput != null,
+                    onModeChange = { mode = it; restart() },
+                    input = input,
+                    touchInput = touchInput,
+                    vehicleInput = vehicleInput,
+                    onRestart = ::restart,
+                    modifier = Modifier
+                        .width(panelWidth)
+                        .fillMaxHeight(),
+                )
+            }
         }
     }
 }
@@ -193,6 +210,7 @@ private fun SimHud(
     frame: () -> Long,
     lock: LockState,
     waitingForBrake: Boolean,
+    vehicleStatus: String?,
     onRestart: () -> Unit,
     modifier: Modifier,
 ) {
@@ -205,6 +223,7 @@ private fun SimHud(
         ) {
             Column(Modifier.padding(12.dp)) {
                 HudText("${sim.map.mode.label} · ${sim.car.name}", bold = true)
+                vehicleStatus?.let { HudText(it) }
                 HudText("속도 ${fmt(kotlin.math.abs(sim.speed) * 3.6)} km/h")
                 HudText("바퀴 각도 ${fmt(sim.wheelAngleDeg)}°")
                 HudText("전후진 전환 ${sim.directionChanges}회")
@@ -239,6 +258,60 @@ private fun SimHud(
             )
         }
     }
+}
+
+/** 실제 차량 모드의 전진/후진 + 다시 하기 버튼 (오른쪽 메뉴를 대신함) */
+@Composable
+private fun DirectionBar(
+    direction: Direction,
+    onDirectionChange: (Direction) -> Unit,
+    onRestart: () -> Unit,
+    modifier: Modifier,
+) {
+    Surface(
+        color = Color.Black.copy(alpha = 0.55f),
+        shape = RoundedCornerShape(20.dp),
+        modifier = modifier,
+    ) {
+        Row(
+            Modifier.padding(12.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Direction.entries.forEach { d ->
+                val selected = direction == d
+                Button(
+                    onClick = { onDirectionChange(d) },
+                    colors = if (selected) ButtonDefaults.buttonColors()
+                    else ButtonDefaults.buttonColors(containerColor = Color.White.copy(alpha = 0.12f), contentColor = Color.White),
+                    modifier = Modifier.height(64.dp),
+                ) {
+                    Text(if (d == Direction.FORWARD) "전진 (D)" else "후진 (R)", fontSize = 22.sp * LocalAppTextScale.current)
+                }
+            }
+            OutlinedButton(onClick = onRestart, modifier = Modifier.height(64.dp)) {
+                Text("다시", color = Color.White, fontSize = 22.sp * LocalAppTextScale.current)
+            }
+        }
+    }
+}
+
+/** HUD에 한 줄로 보여줄 기어·브레이크 상태 */
+private fun VehicleInput.statusText(): String {
+    val gearText = when (gear) {
+        null -> "확인 중"
+        VehicleGear.GEAR_PARK -> "P"
+        VehicleGear.GEAR_REVERSE -> "R"
+        VehicleGear.GEAR_NEUTRAL -> "N"
+        VehicleGear.GEAR_DRIVE -> "D"
+        else -> gear.toString()
+    }
+    val brakeText = when (pedalPressed) {
+        null -> "확인 중"
+        true -> "밟음"
+        false -> "뗌"
+    }
+    return "기어 $gearText · 브레이크 $brakeText"
 }
 
 @Composable
