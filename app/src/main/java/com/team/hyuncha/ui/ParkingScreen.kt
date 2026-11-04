@@ -8,6 +8,7 @@ import androidx.compose.foundation.focusable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -41,6 +42,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.Offset
@@ -70,6 +72,7 @@ import com.team.hyuncha.sim.ParkingMaps
 import com.team.hyuncha.sim.ParkingSimulator
 import com.team.hyuncha.sim.SimStatus
 import java.util.Locale
+import com.team.hyuncha.ui.theme.LocalAppTextScale
 
 /** 입력 방식: 화면 조작(개발·백업용) / 실제 차량(Pleos SDK) */
 enum class InputMode(val label: String) {
@@ -82,8 +85,11 @@ enum class InputMode(val label: String) {
  * @param vehicle Pleos SDK. null이면 화면 조작만 가능
  */
 @Composable
-fun ParkingScreen(vehicle: Vehicle?, modifier: Modifier = Modifier) {
-    var car by remember { mutableStateOf(CarPresets.GRANDEUR) }
+fun ParkingScreen(
+    vehicle: Vehicle?, modifier: Modifier = Modifier,
+    initialCar: CarSpec = CarPresets.GRANDEUR,
+) {
+    val car = initialCar
     val currentCar by rememberUpdatedState(car)
     var mode by remember { mutableStateOf(InputMode.TOUCH) }
     val touchInput = remember { TouchInput() }
@@ -127,54 +133,56 @@ fun ParkingScreen(vehicle: Vehicle?, modifier: Modifier = Modifier) {
         vehicleInput?.reset()
     }
 
-    Row(
-        modifier
-            .fillMaxSize()
-            .focusRequester(focus)
-            .focusable()
-            // 에뮬레이터에서 키보드로 테스트하기 위한 단축키 (핸들·진행은 화면 조작 모드에서만)
-            .onPreviewKeyEvent { e ->
-                val down = e.type == KeyEventType.KeyDown
-                when (e.key) {
-                    Key.DirectionLeft -> { if (down) touchInput.steerBy(-STEER_KEY_STEP, car); true }
-                    Key.DirectionRight -> { if (down) touchInput.steerBy(STEER_KEY_STEP, car); true }
-                    Key.DirectionUp -> { if (down) input.direction = Direction.FORWARD; true }
-                    Key.DirectionDown -> { if (down) input.direction = Direction.REVERSE; true }
-                    Key.Spacebar -> { touchInput.brakePressed = !down; true }  // 누르는 동안 진행
-                    Key.R -> { if (down) restart(); true }
-                    else -> false
-                }
-            },
-    ) {
-        Box(
+    BoxWithConstraints(modifier.fillMaxSize()) {
+        val panelWidth = minOf(maxWidth * 0.48f, 440.dp * (LocalDensity.current.fontScale * LocalAppTextScale.current).coerceAtLeast(1f))
+        Row(
             Modifier
-                .weight(1f)
-                .fillMaxHeight(),
+                .fillMaxSize()
+                .focusRequester(focus)
+                .focusable()
+                // 에뮬레이터에서 키보드로 테스트하기 위한 단축키 (핸들·진행은 화면 조작 모드에서만)
+                .onPreviewKeyEvent { e ->
+                    val down = e.type == KeyEventType.KeyDown
+                    when (e.key) {
+                        Key.DirectionLeft -> { if (down) touchInput.steerBy(-STEER_KEY_STEP, car); true }
+                        Key.DirectionRight -> { if (down) touchInput.steerBy(STEER_KEY_STEP, car); true }
+                        Key.DirectionUp -> { if (down) input.direction = Direction.FORWARD; true }
+                        Key.DirectionDown -> { if (down) input.direction = Direction.REVERSE; true }
+                        Key.Spacebar -> { touchInput.brakePressed = !down; true }  // 누르는 동안 진행
+                        Key.R -> { if (down) restart(); true }
+                        else -> false
+                    }
+                },
         ) {
-            ParkingCanvas(sim, { frame.longValue }, Modifier.fillMaxSize())
-            SimHud(
-                sim = sim,
-                frame = { frame.longValue },
-                lock = lock,
-                waitingForBrake = input === vehicleInput && vehicleInput?.armed == false,
+            Box(
+                Modifier
+                    .weight(1f)
+                    .fillMaxHeight(),
+            ) {
+                ParkingCanvas(sim, { frame.longValue }, Modifier.fillMaxSize())
+                SimHud(
+                    sim = sim,
+                    frame = { frame.longValue },
+                    lock = lock,
+                    waitingForBrake = input === vehicleInput && vehicleInput?.armed == false,
+                    onRestart = ::restart,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            }
+            ControlPanel(
+                car = car,
+                mode = mode,
+                vehicleAvailable = vehicleInput != null,
+                onModeChange = { mode = it; restart() },
+                input = input,
+                touchInput = touchInput,
+                vehicleInput = vehicleInput,
                 onRestart = ::restart,
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier
+                    .width(panelWidth)
+                    .fillMaxHeight(),
             )
         }
-        ControlPanel(
-            car = car,
-            onCarChange = { car = it; touchInput.reset(); vehicleInput?.reset() },
-            mode = mode,
-            vehicleAvailable = vehicleInput != null,
-            onModeChange = { mode = it; restart() },
-            input = input,
-            touchInput = touchInput,
-            vehicleInput = vehicleInput,
-            onRestart = ::restart,
-            modifier = Modifier
-                .width(340.dp)
-                .fillMaxHeight(),
-        )
     }
 }
 
@@ -238,7 +246,7 @@ private fun HudText(text: String, bold: Boolean = false) {
     Text(
         text,
         color = Color.White,
-        fontSize = 15.sp,
+        fontSize = 24.sp * LocalAppTextScale.current,
         fontWeight = if (bold) FontWeight.Bold else FontWeight.Normal,
     )
 }
@@ -268,11 +276,10 @@ private fun ResultCard(title: String, lines: List<String>, onRestart: () -> Unit
     }
 }
 
-/** 오른쪽 조작 패널: 입력 방식, 차종, 핸들, 전진/후진, 브레이크 */
+/** 오른쪽 조작 패널: 입력 방식, 핸들, 전진/후진, 브레이크. 차종은 홈에서 정한다. */
 @Composable
 private fun ControlPanel(
     car: CarSpec,
-    onCarChange: (CarSpec) -> Unit,
     mode: InputMode,
     vehicleAvailable: Boolean,
     onModeChange: (InputMode) -> Unit,
@@ -299,19 +306,6 @@ private fun ControlPanel(
                         enabled = m == InputMode.TOUCH || vehicleAvailable,
                         label = { Text(m.label) },
                     )
-                }
-            }
-
-            Text("차종", fontWeight = FontWeight.Bold)
-            CarPresets.all.chunked(2).forEach { row ->
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    row.forEach { spec ->
-                        FilterChip(
-                            selected = spec == car,
-                            onClick = { onCarChange(spec) },
-                            label = { Text("${spec.name} (${spec.type.label})") },
-                        )
-                    }
                 }
             }
 

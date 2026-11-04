@@ -5,12 +5,7 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Scaffold
-import androidx.compose.ui.Modifier
-import com.team.hyuncha.ui.ParkingScreen
-import com.team.hyuncha.ui.theme.HyunchaTheme
+import com.team.hyuncha.ui.HyunchaApp
 
 class MainActivity : ComponentActivity() {
 
@@ -22,13 +17,7 @@ class MainActivity : ComponentActivity() {
         vehicle.initialize()  // 차량 서비스 연결 시작 (연결 전 요청은 SDK가 모아뒀다가 처리)
 
         enableEdgeToEdge()
-        setContent {
-            HyunchaTheme {
-                Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
-                    ParkingScreen(vehicle, Modifier.padding(innerPadding))
-                }
-            }
-        }
+        setContent { HyunchaApp(vehicle) }
     }
 
     // 화면이 완전히 끝날 때 연결 해제
