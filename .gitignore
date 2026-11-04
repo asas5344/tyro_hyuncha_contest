@@ -1,3 +1,5 @@
+.idea/deploymentTargetSelector.xml
+.idea/vcs.xml
 *.iml
 .gradle
 /local.properties
