@@ -45,10 +45,43 @@ class HyunchaNavigationTest {
         capture("home_screen", "home-standard.png")
         compose.onNodeWithTag("start_practice").performScrollTo().performClick(); settle()
         compose.onNodeWithTag("parking_screen").assertIsDisplayed()
-        compose.onNodeWithText("직각주차 · 그랜저").assertIsDisplayed()
+        compose.onNodeWithText("T자 주차 · 그랜저").assertIsDisplayed()
         capture("parking_screen", "parking-standard.png")
         compose.onNodeWithTag("back_home").performClick(); settle()
         compose.onNodeWithTag("home_screen").assertIsDisplayed()
+    }
+
+    @Test fun parallelParkingCanBeSelectedAndStarted() {
+        openApp()
+        compose.onNodeWithTag("mode_PARALLEL").performScrollTo().performClick(); settle()
+        compose.onNodeWithTag("start_practice").performScrollTo().performClick(); settle()
+        compose.onNodeWithText("평행 주차 · 그랜저").assertIsDisplayed()
+        capture("parking_screen", "parking-parallel.png")
+        // 홈으로 돌아와도 고른 주차 방식이 유지됨
+        compose.onNodeWithTag("back_home").performClick(); settle()
+        compose.onNodeWithTag("start_practice").performScrollTo().performClick(); settle()
+        compose.onNodeWithText("평행 주차 · 그랜저").assertIsDisplayed()
+    }
+
+    @Test fun diagonalParkingCanBeSelectedAndStarted() {
+        openApp()
+        compose.onNodeWithTag("mode_DIAGONAL").performScrollTo().performClick(); settle()
+        compose.onNodeWithTag("start_practice").performScrollTo().performClick(); settle()
+        compose.onNodeWithText("사선 주차 · 그랜저").assertIsDisplayed()
+        capture("parking_screen", "parking-diagonal.png")
+    }
+
+    @Test fun steeringSettingsAreStored() {
+        // 설정 화면 아래쪽으로 스크롤해야 하는데, 스크롤은 애니메이션이라 시계가 멈춰 있으면 끝나지 않음.
+        // 이 테스트는 주차 화면(계속 움직이는 화면)을 열지 않으므로 시계를 자동으로 진행시킴
+        compose.mainClock.autoAdvance = true
+        openApp()
+        compose.onNodeWithTag("open_settings").performClick(); settle()
+        compose.onNodeWithTag("steer_unit_FRONT_WHEEL").performScrollTo().performClick(); settle()
+        compose.onNodeWithTag("steer_invert_off").performScrollTo().performClick(); settle()
+        val saved = UiPreferences(context, preferenceName)
+        assertEquals(com.team.hyuncha.input.SteeringUnit.FRONT_WHEEL, saved.steeringUnit)
+        assertFalse(saved.invertSteering)
     }
 
     @Test fun selectedCarIsPassedIntoExistingSimulator() {
@@ -57,7 +90,7 @@ class HyunchaNavigationTest {
         compose.onNodeWithTag("select_car_아반떼").performScrollTo().performClick(); settle()
         compose.onNodeWithTag("home_car_name", useUnmergedTree = true).assertTextEquals("아반떼")
         compose.onNodeWithTag("start_practice").performScrollTo().performClick(); settle()
-        compose.onNodeWithText("직각주차 · 아반떼").assertIsDisplayed()
+        compose.onNodeWithText("T자 주차 · 아반떼").assertIsDisplayed()
         compose.onNodeWithText("차종").assertDoesNotExist()
         compose.onNodeWithText("그랜저 (세단)").assertDoesNotExist()
         compose.onNodeWithTag("back_home").performClick(); settle()

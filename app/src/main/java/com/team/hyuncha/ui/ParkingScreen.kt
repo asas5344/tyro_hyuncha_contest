@@ -1,6 +1,7 @@
 package com.team.hyuncha.ui
 
 import ai.pleos.playground.vehicle.Vehicle
+import android.util.Log
 import ai.pleos.playground.vehicle.constant.control.VehicleGear
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -19,10 +20,12 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
@@ -33,8 +36,12 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableDoubleStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
@@ -69,9 +76,15 @@ import com.team.hyuncha.input.VehicleInput
 import com.team.hyuncha.safety.LockState
 import com.team.hyuncha.safety.SafetyLock
 import com.team.hyuncha.sim.ParkingMaps
+import com.team.hyuncha.sim.ParkingMode
 import com.team.hyuncha.sim.ParkingSimulator
+import com.team.hyuncha.sim.Coach
+import com.team.hyuncha.sim.CoachPlan
+import com.team.hyuncha.sim.SimEvent
 import com.team.hyuncha.sim.SimStatus
 import java.util.Locale
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import com.team.hyuncha.ui.theme.LocalAppTextScale
 
 /** 입력 방식: 화면 조작(개발·백업용) / 실제 차량(Pleos SDK) */
@@ -81,24 +94,54 @@ enum class InputMode(val label: String) {
 }
 
 /**
- * 주차 연습 화면: 왼쪽 탑뷰 + 오른쪽 조작 패널
+ * 주차 연습 화면: 탑뷰 전체 화면 + 아래쪽 작은 전진/후진 버튼.
+ * 실제 차량(Virtual Console) 입력을 기본으로 쓰고, 오른쪽 조작 패널은 차량 연결이 없을 때(화면 조작 백업)만 보임.
  * @param vehicle Pleos SDK. null이면 화면 조작만 가능
  */
 @Composable
 fun ParkingScreen(
     vehicle: Vehicle?, modifier: Modifier = Modifier,
     initialCar: CarSpec = CarPresets.GRANDEUR,
+    parkingMode: ParkingMode = ParkingMode.PERPENDICULAR,
+    steeringUnit: SteeringUnit = SteeringUnit.STEERING_WHEEL,
+    invertSteering: Boolean = true,
 ) {
     val car = initialCar
     val currentCar by rememberUpdatedState(car)
-    var mode by remember { mutableStateOf(InputMode.TOUCH) }
+    var mode by remember { mutableStateOf(if (vehicle != null) InputMode.VEHICLE else InputMode.TOUCH) }
     val touchInput = remember { TouchInput() }
     val vehicleInput = remember(vehicle) {
         vehicle?.let { VehicleInput(it) { currentCar.steeringRatio } }
     }
-    val sim = remember(car) { ParkingSimulator(car, ParkingMaps.perpendicular()) }
+    // 설정 화면의 조향값 해석을 차량 입력에 적용
+    SideEffect {
+        vehicleInput?.steeringUnit = steeringUnit
+        vehicleInput?.invertSteering = invertSteering
+    }
+
+    // 다시 할 때마다 round가 바뀌어 목표 칸·주차된 차가 새로 배치됨
+    var round by remember { mutableIntStateOf(0) }
+    val sim = remember(car, round, parkingMode) { ParkingSimulator(car, ParkingMaps.random(parkingMode)) }
     val frame = remember { mutableLongStateOf(0L) }
     val focus = remember { FocusRequester() }
+
+    // 모범 주행: 판이 시작되면 뒤에서 미리 계산 (차량 화면에서 1초 안쪽)
+    val plan by produceState<CoachPlan?>(initialValue = null, sim) {
+        value = withContext(Dispatchers.Default) {
+            val started = System.nanoTime()
+            Coach.solve(car, sim.map).also {
+                // 차량 화면에서 얼마나 걸리는지 확인용 (Logcat에서 "CoachTiming"으로 검색)
+                Log.d("CoachTiming", "${sim.map.mode} ${car.name}: ${(System.nanoTime() - started) / 1_000_000}ms, 찾음=${it != null}")
+            }
+        }
+    }
+
+    // 다시 보기 상태 (새 판이 시작되면 초기화). 내 주행 또는 모범 주행을 재생
+    var replaying by remember(sim) { mutableStateOf(false) }
+    var replayModel by remember(sim) { mutableStateOf(false) }
+    val replayClock = remember(sim) { mutableDoubleStateOf(0.0) }
+    var replayPlaying by remember(sim) { mutableStateOf(true) }
+    var replaySpeed by remember(sim) { mutableDoubleStateOf(1.0) }
 
     val input: DrivingInput = if (mode == InputMode.VEHICLE && vehicleInput != null) vehicleInput else touchInput
     val lock = if (input === vehicleInput) SafetyLock.check(vehicleInput?.gear) else LockState.OK
@@ -119,16 +162,33 @@ fun ParkingScreen(
                 // 프레임이 밀려도 한 번에 너무 멀리 가지 않도록 최대 50ms로 제한
                 val dt = ((now - last) / 1e9).coerceAtMost(0.05)
                 last = now
-                // 안전 잠금이 풀려 있으면 시뮬레이터를 멈춤
-                if (currentLock == LockState.OK) sim.step(currentInput, dt)
+                if (replaying) {
+                    // 다시 보여주기: 시뮬레이터는 멈추고 재생 시각만 앞으로
+                    if (replayPlaying) {
+                        val source = if (replayModel) plan?.run ?: sim else sim
+                        val end = source.history.last().timeSec
+                        replayClock.doubleValue = (replayClock.doubleValue + dt * replaySpeed).coerceAtMost(end)
+                        if (replayClock.doubleValue >= end) replayPlaying = false
+                    }
+                } else if (currentLock == LockState.OK) {
+                    // 안전 잠금이 풀려 있으면 시뮬레이터를 멈춤
+                    sim.step(currentInput, dt)
+                }
                 frame.longValue++
             }
         }
     }
     LaunchedEffect(Unit) { focus.requestFocus() }
 
+    fun startReplay(model: Boolean) {
+        replayModel = model && plan != null
+        replayClock.doubleValue = 0.0
+        replayPlaying = true
+        replaying = true
+    }
+
     fun restart() {
-        sim.reset()
+        round++
         touchInput.reset()
         vehicleInput?.reset()
     }
@@ -159,29 +219,86 @@ fun ParkingScreen(
                     .weight(1f)
                     .fillMaxHeight(),
             ) {
-                ParkingCanvas(sim, { frame.longValue }, Modifier.fillMaxSize())
+                ParkingCanvas(
+                    sim = sim,
+                    frame = { frame.longValue },
+                    direction = { input.direction },
+                    braking = { input.brakePressed },
+                    modifier = Modifier.fillMaxSize(),
+                    replay = {
+                        if (!replaying) null
+                        else {
+                            val model = plan?.run
+                            if (replayModel && model != null) ReplayView(model, replayClock.doubleValue, isModel = true, compare = sim)
+                            else ReplayView(sim, replayClock.doubleValue, isModel = false, compare = model)
+                        }
+                    },
+                )
                 SimHud(
                     sim = sim,
                     frame = { frame.longValue },
                     lock = lock,
                     waitingForBrake = input === vehicleInput && vehicleInput?.armed == false,
+                    vehicleStatus = if (input === vehicleInput) vehicleInput?.statusText() else null,
+                    replaying = replaying,
+                    plan = plan,
                     onRestart = ::restart,
+                    onReplay = { startReplay(model = false) },
+                    onShowModel = { startReplay(model = true) },
                     modifier = Modifier.fillMaxSize(),
                 )
+                if (replaying) {
+                    val model = plan
+                    ReplayBar(
+                        source = if (replayModel && model != null) model.run else sim,
+                        plan = if (replayModel) model else null,
+                        canSwitch = model != null,
+                        time = replayClock.doubleValue,
+                        playing = replayPlaying,
+                        speed = replaySpeed,
+                        onPlayPause = {
+                            // 끝까지 본 상태에서 재생을 누르면 처음부터
+                            val source = if (replayModel) plan?.run ?: sim else sim
+                            if (!replayPlaying && replayClock.doubleValue >= source.history.last().timeSec) replayClock.doubleValue = 0.0
+                            replayPlaying = !replayPlaying
+                        },
+                        onSwitch = { startReplay(model = !replayModel) },
+                        onSeek = { replayClock.doubleValue = it; replayPlaying = false },
+                        onSpeedChange = { replaySpeed = it },
+                        onClose = { replaying = false },
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .padding(24.dp),
+                    )
+                }
+                // 실제 차량 모드: 메뉴 대신 전진/후진과 다시 하기만 작게 띄움 (기어는 P 고정이라 방향은 앱에서 고름)
+                if (input === vehicleInput && !replaying) {
+                    DirectionBar(
+                        direction = input.direction,
+                        onDirectionChange = { input.direction = it },
+                        onRestart = ::restart,
+                        modifier = Modifier
+                            .align(Alignment.BottomEnd)
+                            .padding(24.dp),
+                    )
+                }
             }
-            ControlPanel(
-                car = car,
-                mode = mode,
-                vehicleAvailable = vehicleInput != null,
-                onModeChange = { mode = it; restart() },
-                input = input,
-                touchInput = touchInput,
-                vehicleInput = vehicleInput,
-                onRestart = ::restart,
-                modifier = Modifier
-                    .width(panelWidth)
-                    .fillMaxHeight(),
-            )
+            // 화면 조작 백업 모드에서만 오른쪽 조작 패널을 보여줌
+            if (input === touchInput) {
+                ControlPanel(
+                    car = car,
+                    mode = mode,
+                    vehicleAvailable = vehicleInput != null,
+                    onModeChange = { mode = it; restart() },
+                    input = input,
+                    touchInput = touchInput,
+                    vehicleInput = vehicleInput,
+                    onRestart = ::restart,
+                    modifier = Modifier
+                        .width(panelWidth)
+                        .fillMaxHeight(),
+                )
+            }
         }
     }
 }
@@ -193,10 +310,21 @@ private fun SimHud(
     frame: () -> Long,
     lock: LockState,
     waitingForBrake: Boolean,
+    vehicleStatus: String?,
+    replaying: Boolean,
+    plan: CoachPlan?,
     onRestart: () -> Unit,
+    onReplay: () -> Unit,
+    onShowModel: () -> Unit,
     modifier: Modifier,
 ) {
     frame()
+    // 결과가 나오면(또는 모범 주행 계산이 끝나면) 한 번만 피드백을 만듦
+    val feedback = remember(sim, sim.status, plan) {
+        if (sim.status == SimStatus.DRIVING) emptyList() else Coach.feedback(sim, plan)
+    }
+    // 다시 보여주기 중에는 결과 카드·안내를 가리지 않도록 숨김
+    if (replaying) return
     Box(modifier.padding(16.dp)) {
         Surface(
             color = Color.Black.copy(alpha = 0.55f),
@@ -205,6 +333,7 @@ private fun SimHud(
         ) {
             Column(Modifier.padding(12.dp)) {
                 HudText("${sim.map.mode.label} · ${sim.car.name}", bold = true)
+                vehicleStatus?.let { HudText(it) }
                 HudText("속도 ${fmt(kotlin.math.abs(sim.speed) * 3.6)} km/h")
                 HudText("바퀴 각도 ${fmt(sim.wheelAngleDeg)}°")
                 HudText("전후진 전환 ${sim.directionChanges}회")
@@ -216,8 +345,12 @@ private fun SimHud(
             lock.message != null -> NoticeCard(lock.message, Modifier.align(Alignment.Center))
             sim.status == SimStatus.COLLIDED -> ResultCard(
                 title = "부딪혔어요",
-                lines = listOf("천천히, 핸들을 조금 더 일찍 꺾어보세요."),
+                lines = listOfNotNull(sim.collision?.message),
+                feedback = feedback,
+                modelReady = plan != null,
                 onRestart = onRestart,
+                onReplay = onReplay,
+                onShowModel = onShowModel,
                 modifier = Modifier.align(Alignment.Center),
             )
             sim.status == SimStatus.PARKED -> sim.result?.let { r ->
@@ -229,7 +362,11 @@ private fun SimHud(
                         "전후진 전환 ${r.directionChanges}회",
                         "걸린 시간 ${fmt(r.elapsedSec, 0)}초",
                     ),
+                    feedback = feedback,
+                    modelReady = plan != null,
                     onRestart = onRestart,
+                    onReplay = onReplay,
+                    onShowModel = onShowModel,
                     modifier = Modifier.align(Alignment.Center),
                 )
             }
@@ -239,6 +376,60 @@ private fun SimHud(
             )
         }
     }
+}
+
+/** 실제 차량 모드의 전진/후진 + 다시 하기 버튼 (오른쪽 메뉴를 대신함) */
+@Composable
+private fun DirectionBar(
+    direction: Direction,
+    onDirectionChange: (Direction) -> Unit,
+    onRestart: () -> Unit,
+    modifier: Modifier,
+) {
+    Surface(
+        color = Color.Black.copy(alpha = 0.55f),
+        shape = RoundedCornerShape(20.dp),
+        modifier = modifier,
+    ) {
+        Row(
+            Modifier.padding(12.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Direction.entries.forEach { d ->
+                val selected = direction == d
+                Button(
+                    onClick = { onDirectionChange(d) },
+                    colors = if (selected) ButtonDefaults.buttonColors()
+                    else ButtonDefaults.buttonColors(containerColor = Color.White.copy(alpha = 0.12f), contentColor = Color.White),
+                    modifier = Modifier.height(64.dp),
+                ) {
+                    Text(if (d == Direction.FORWARD) "전진 (D)" else "후진 (R)", fontSize = 22.sp * LocalAppTextScale.current)
+                }
+            }
+            OutlinedButton(onClick = onRestart, modifier = Modifier.height(64.dp)) {
+                Text("다시", color = Color.White, fontSize = 22.sp * LocalAppTextScale.current)
+            }
+        }
+    }
+}
+
+/** HUD에 한 줄로 보여줄 기어·브레이크 상태 */
+private fun VehicleInput.statusText(): String {
+    val gearText = when (gear) {
+        null -> "확인 중"
+        VehicleGear.GEAR_PARK -> "P"
+        VehicleGear.GEAR_REVERSE -> "R"
+        VehicleGear.GEAR_NEUTRAL -> "N"
+        VehicleGear.GEAR_DRIVE -> "D"
+        else -> gear.toString()
+    }
+    val brakeText = when (pedalPressed) {
+        null -> "확인 중"
+        true -> "밟음"
+        false -> "뗌"
+    }
+    return "기어 $gearText · 브레이크 $brakeText"
 }
 
 @Composable
@@ -264,16 +455,124 @@ private fun NoticeCard(text: String, modifier: Modifier) {
 }
 
 @Composable
-private fun ResultCard(title: String, lines: List<String>, onRestart: () -> Unit, modifier: Modifier) {
-    Card(modifier.width(320.dp)) {
-        Column(Modifier.padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+private fun ResultCard(
+    title: String,
+    lines: List<String>,
+    feedback: List<String>,
+    modelReady: Boolean,
+    onRestart: () -> Unit,
+    onReplay: () -> Unit,
+    onShowModel: () -> Unit,
+    modifier: Modifier,
+) {
+    Card(modifier.widthIn(min = 420.dp, max = 640.dp)) {
+        Column(Modifier.padding(28.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             Text(title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
             Spacer(Modifier.height(12.dp))
-            lines.forEach { Text(it) }
-            Spacer(Modifier.height(16.dp))
-            Button(onClick = onRestart) { Text("다시 하기") }
+            lines.forEach { Text(it, textAlign = TextAlign.Center) }
+            // 코치 피드백: 무엇이 문제였는지, 어떻게 고치면 되는지
+            if (feedback.isNotEmpty()) {
+                Spacer(Modifier.height(16.dp))
+                Surface(color = MaterialTheme.colorScheme.surfaceVariant, shape = RoundedCornerShape(12.dp)) {
+                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text("코치 피드백", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                        feedback.forEach { Text("· $it") }
+                    }
+                }
+            }
+            Spacer(Modifier.height(20.dp))
+            // 버튼 글자가 두 줄로 꺾이지 않게 한 줄로 고정
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Button(onClick = onShowModel, enabled = modelReady) {
+                    Text(if (modelReady) "모범 주행 보기" else "모범 주행 계산 중…", maxLines = 1, softWrap = false)
+                }
+                OutlinedButton(onClick = onReplay) { Text("내 주행 보기", maxLines = 1, softWrap = false) }
+                OutlinedButton(onClick = onRestart) { Text("다시 하기", maxLines = 1, softWrap = false) }
+            }
         }
     }
+}
+
+/**
+ * 다시 보여주기 조작 바: 재생/일시정지, 배속, 위치 이동, 닫기.
+ * 지금 시각까지 지난 마지막 사건(전환·충돌)을 위에 한 줄로 알려줌.
+ */
+@Composable
+private fun ReplayBar(
+    source: ParkingSimulator,
+    plan: CoachPlan?,
+    canSwitch: Boolean,
+    time: Double,
+    playing: Boolean,
+    speed: Double,
+    onPlayPause: () -> Unit,
+    onSeek: (Double) -> Unit,
+    onSpeedChange: (Double) -> Unit,
+    onClose: () -> Unit,
+    onSwitch: () -> Unit,
+    modifier: Modifier,
+) {
+    val end = source.history.last().timeSec.coerceAtLeast(0.1)
+    val lastEvent = source.events.lastOrNull { it.timeSec <= time }
+    // 모범 주행이면 지금 단계 설명, 내 주행이면 지난 사건
+    val caption = if (plan != null) "모범 주행 · " + (plan.stepAt(time)?.text ?: "") else when (lastEvent) {
+        is SimEvent.DirectionChanged ->
+            "${lastEvent.count}번째 전환: ${if (lastEvent.to == Direction.REVERSE) "후진" else "전진"}으로 바꿨어요"
+        is SimEvent.Collided -> "여기서 ${lastEvent.message}"
+        null -> "처음부터 다시 보는 중"
+    }
+    val textSize = 20.sp * LocalAppTextScale.current
+
+    Surface(color = Color.Black.copy(alpha = 0.7f), shape = RoundedCornerShape(20.dp), modifier = modifier.widthIn(max = 900.dp)) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(
+                caption,
+                color = when {
+                    plan != null -> Color(0xFF8EE6B1)
+                    lastEvent is SimEvent.Collided -> Color(0xFFFF8A80)
+                    else -> Color.White
+                },
+                fontSize = textSize, fontWeight = FontWeight.Bold,
+            )
+            // 모범 주행이 유일한 정답처럼 보이지 않도록 안내
+            if (plan != null) {
+                Text(
+                    "모범 주행은 표준 방법으로 깔끔하게 넣은 예시 하나예요. 유일한 최적 경로는 아니고, 다른 방법으로도 주차할 수 있어요.",
+                    color = Color.White.copy(alpha = 0.7f),
+                    fontSize = textSize * 0.75f,
+                )
+            }
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Button(onClick = onPlayPause, modifier = Modifier.height(56.dp)) {
+                    Text(if (playing) "일시정지" else "재생", fontSize = textSize)
+                }
+                OutlinedButton(onClick = { onSpeedChange(if (speed == 1.0) 2.0 else 1.0) }, modifier = Modifier.height(56.dp)) {
+                    Text(if (speed == 1.0) "1배속" else "2배속", color = Color.White, fontSize = textSize)
+                }
+                Slider(
+                    value = time.toFloat(),
+                    onValueChange = { onSeek(it.toDouble()) },
+                    valueRange = 0f..end.toFloat(),
+                    modifier = Modifier.weight(1f),
+                )
+                Text("${clock(time)} / ${clock(end)}", color = Color.White, fontSize = textSize)
+                if (canSwitch) {
+                    OutlinedButton(onClick = onSwitch, modifier = Modifier.height(56.dp)) {
+                        Text(if (plan != null) "내 주행 보기" else "모범 주행 보기", color = Color.White, fontSize = textSize, maxLines = 1, softWrap = false)
+                    }
+                }
+                OutlinedButton(onClick = onClose, modifier = Modifier.height(56.dp)) {
+                    Text("닫기", color = Color.White, fontSize = textSize)
+                }
+            }
+        }
+    }
+}
+
+/** 초 → "0:12" */
+private fun clock(sec: Double): String {
+    val s = sec.toInt()
+    return "${s / 60}:${(s % 60).toString().padStart(2, '0')}"
 }
 
 /** 오른쪽 조작 패널: 입력 방식, 핸들, 전진/후진, 브레이크. 차종은 홈에서 정한다. */
