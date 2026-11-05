@@ -7,8 +7,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
@@ -23,6 +26,8 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntSize
 import com.team.hyuncha.input.Direction
 import com.team.hyuncha.sim.Guidance
 import com.team.hyuncha.sim.OrientedRect
@@ -31,6 +36,7 @@ import com.team.hyuncha.sim.ParkingSimulator
 import com.team.hyuncha.sim.SimStatus
 import com.team.hyuncha.sim.Vec2
 import kotlin.math.min
+import kotlin.math.roundToInt
 import kotlin.math.sin
 import kotlin.random.Random
 
@@ -53,6 +59,10 @@ private val BrakeRed = Color(0xFFFF2D2D)
 private val ParkedColors = listOf(
     Color(0xFFE8E8E6), Color(0xFF2B2D31), Color(0xFF8E949C), Color(0xFF26395C), Color(0xFF8C2B2B),
 )
+// 은색 이미지에 곱해서 색을 입힘 (흰색 = 원래 은색 그대로). 유리·외곽선은 어두워서 거의 안 바뀜
+private val ParkedTints = listOf(Color.White, Color(0xFF5A5E66), Color(0xFFD9C7A3), Color(0xFFC25555), Color(0xFFB8BCC4))
+private val MyCarTint = Color(0xFF7FB2FF)
+private val CrashedTint = Color(0xFFFF7A7A)
 
 // 안내
 private val GuideRed = Color(0xFFFF5A52)
@@ -85,6 +95,8 @@ fun ParkingCanvas(
 ) {
     val textMeasurer = rememberTextMeasurer()
     val speckles = remember(sim.map) { makeSpeckles(sim.map) }
+    val sprites = rememberCarTopSprites()
+    val spriteList = remember(sprites) { sprites.values.toList() }
 
     Canvas(modifier) {
         frame()  // 이 값을 읽어둬야 시뮬레이터가 움직일 때 다시 그려짐
@@ -115,6 +127,8 @@ fun ParkingCanvas(
                 center = rect.center, heading = heading,
                 lengthM = rect.halfLength * 2, widthM = rect.halfWidth * 2,
                 bodyColor = ParkedColors[i % ParkedColors.size], proj = proj,
+                sprite = spriteList.getOrNull((i * 3 + 1) % spriteList.size.coerceAtLeast(1)),
+                tint = ParkedTints[i % ParkedTints.size],
             )
         }
 
@@ -139,6 +153,8 @@ fun ParkingCanvas(
             lengthM = sim.car.lengthM, widthM = sim.car.widthM,
             bodyColor = if (sim.status == SimStatus.COLLIDED) CrashedRed else MyCarBlue,
             proj = proj,
+            sprite = sprites.forCar(sim.car),
+            tint = if (sim.status == SimStatus.COLLIDED) CrashedTint else MyCarTint,
             lights = CarLights(brake = braking(), reverse = reversing),
             frontWheels = FrontWheels(
                 axleOffsetM = sim.car.wheelBaseM - (sim.car.lengthM / 2 - sim.car.rearOverhangM),
@@ -290,6 +306,8 @@ private fun DrawScope.drawCarTopDown(
     proj: Projection,
     lights: CarLights? = null,
     frontWheels: FrontWheels? = null,
+    sprite: CarTopSprite? = null,
+    tint: Color? = null,
 ) {
     val c = proj.toScreen(center)
     val l = proj.m(lengthM)
@@ -316,36 +334,49 @@ private fun DrawScope.drawCarTopDown(
             }
         }
 
-        // 차체: 가운데가 밝고 양옆이 어두운 그라데이션으로 둥근 느낌
-        val dark = bodyColor.darken(0.45f)
-        val light = bodyColor.lighten(0.25f)
-        drawRoundRect(
-            brush = Brush.verticalGradient(listOf(dark, bodyColor, light, bodyColor, dark), startY = -w / 2, endY = w / 2),
-            topLeft = Offset(-l / 2, -w / 2), size = Size(l, w), cornerRadius = corner,
-        )
+        if (sprite != null) {
+            // 이미지: 가로 = 전장, 차체 부분 높이 = 전폭이 되도록 늘려서 그림 (미러는 그 바깥으로 나옴)
+            val imgH = w / (sprite.bodyBottom - sprite.bodyTop)
+            drawImage(
+                image = sprite.image,
+                dstOffset = IntOffset((-l / 2).roundToInt(), (-w / 2 - sprite.bodyTop * imgH).roundToInt()),
+                dstSize = IntSize(l.roundToInt(), imgH.roundToInt()),
+                colorFilter = tint?.let { ColorFilter.tint(it, BlendMode.Modulate) },
+                filterQuality = FilterQuality.High,
+            )
+        } else {
+            // 차체: 가운데가 밝고 양옆이 어두운 그라데이션으로 둥근 느낌
+            val dark = bodyColor.darken(0.45f)
+            val light = bodyColor.lighten(0.25f)
+            drawRoundRect(
+                brush = Brush.verticalGradient(listOf(dark, bodyColor, light, bodyColor, dark), startY = -w / 2, endY = w / 2),
+                topLeft = Offset(-l / 2, -w / 2), size = Size(l, w), cornerRadius = corner,
+            )
 
-        // 사이드미러: 차체 양옆으로 12cm 튀어나옴
-        for (s in listOf(-1f, 1f)) {
-            val top = if (s > 0) w / 2 - 0.02f * m else -w / 2 - 0.12f * m
-            drawRoundRect(dark, topLeft = Offset(0.13f * l, top), size = Size(0.2f * m, 0.14f * m), cornerRadius = CornerRadius(0.05f * m))
-        }
+            // 사이드미러: 차체 양옆으로 12cm 튀어나옴
+            for (s in listOf(-1f, 1f)) {
+                val top = if (s > 0) w / 2 - 0.02f * m else -w / 2 - 0.12f * m
+                drawRoundRect(dark, topLeft = Offset(0.13f * l, top), size = Size(0.2f * m, 0.14f * m), cornerRadius = CornerRadius(0.05f * m))
+            }
 
-        // 앞유리 (지붕 쪽이 살짝 좁은 사다리꼴)
-        trapezoid(xNear = 0.10f * l, xFar = 0.25f * l, halfNear = 0.37f * w, halfFar = 0.42f * w, color = GlassDark)
-        // 뒷유리
-        trapezoid(xNear = -0.22f * l, xFar = -0.35f * l, halfNear = 0.37f * w, halfFar = 0.40f * w, color = GlassDark)
-        // 지붕
-        drawRoundRect(
-            brush = Brush.verticalGradient(listOf(bodyColor.darken(0.2f), bodyColor.lighten(0.15f), bodyColor.darken(0.2f)), startY = -0.37f * w, endY = 0.37f * w),
-            topLeft = Offset(-0.22f * l, -0.37f * w), size = Size(0.32f * l, 0.74f * w), cornerRadius = CornerRadius(0.15f * m),
-        )
-        // 유리 반사광
-        drawLine(Color.White.copy(alpha = 0.18f), Offset(0.16f * l, -0.3f * w), Offset(0.2f * l, 0.1f * w), strokeWidth = 0.05f * m)
+            // 앞유리 (지붕 쪽이 살짝 좁은 사다리꼴)
+            trapezoid(xNear = 0.10f * l, xFar = 0.25f * l, halfNear = 0.37f * w, halfFar = 0.42f * w, color = GlassDark)
+            // 뒷유리
+            trapezoid(xNear = -0.22f * l, xFar = -0.35f * l, halfNear = 0.37f * w, halfFar = 0.40f * w, color = GlassDark)
+            // 지붕
+            drawRoundRect(
+                brush = Brush.verticalGradient(listOf(bodyColor.darken(0.2f), bodyColor.lighten(0.15f), bodyColor.darken(0.2f)), startY = -0.37f * w, endY = 0.37f * w),
+                topLeft = Offset(-0.22f * l, -0.37f * w), size = Size(0.32f * l, 0.74f * w), cornerRadius = CornerRadius(0.15f * m),
+            )
+            // 유리 반사광
+            drawLine(Color.White.copy(alpha = 0.18f), Offset(0.16f * l, -0.3f * w), Offset(0.2f * l, 0.1f * w), strokeWidth = 0.05f * m)
 
-        // 헤드램프
-        for (s in listOf(-1f, 1f)) {
-            drawRoundRect(HeadLight, topLeft = Offset(l / 2 - 0.16f * m, s * (w / 2 - 0.22f * m) - 0.17f * m),
-                size = Size(0.1f * m, 0.34f * m), cornerRadius = CornerRadius(0.04f * m))
+            // 헤드램프
+            for (s in listOf(-1f, 1f)) {
+                drawRoundRect(HeadLight, topLeft = Offset(l / 2 - 0.16f * m, s * (w / 2 - 0.22f * m) - 0.17f * m),
+                    size = Size(0.1f * m, 0.34f * m), cornerRadius = CornerRadius(0.04f * m))
+            }
+
         }
 
         // 후미등: 브레이크를 밟으면 밝은 빨강 + 번짐
@@ -356,7 +387,9 @@ private fun DrawScope.drawCarTopDown(
                 drawCircle(Brush.radialGradient(listOf(BrakeRed.copy(alpha = 0.55f), Color.Transparent),
                     center = Offset(tl.x, tl.y + 0.2f * m), radius = 0.7f * m), radius = 0.7f * m, center = Offset(tl.x, tl.y + 0.2f * m))
             }
-            drawRoundRect(if (braking) BrakeRed else TailDim, topLeft = tl, size = Size(0.09f * m, 0.4f * m), cornerRadius = CornerRadius(0.04f * m))
+            if (braking || sprite == null) {
+                drawRoundRect(if (braking) BrakeRed else TailDim, topLeft = tl, size = Size(0.09f * m, 0.4f * m), cornerRadius = CornerRadius(0.04f * m))
+            }
         }
         // 후진등: R일 때 뒤 범퍼 가운데 흰 불빛
         if (lights?.reverse == true) {
