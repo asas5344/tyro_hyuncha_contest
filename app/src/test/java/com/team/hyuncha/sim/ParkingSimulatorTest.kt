@@ -125,6 +125,36 @@ class ParkingSimulatorTest {
         }
     }
 
+    /** 랜덤 배치에서 목표가 될 수 있는 어느 칸이든 주차 가능해야 함. 가장 어려운 경우(나머지 칸이 전부 찬 상태)로 확인 */
+    @Test
+    fun 모든_칸이_목표일_때도_주차할_수_있다() {
+        for (target in ParkingMaps.TARGET_RANGE) {
+            val full = (0 until ParkingMaps.SLOT_COUNT).toList()
+            for (car in CarPresets.all) {
+                val slotX = ParkingMaps.perpendicular(target, full).slot.center.x
+                val solved = listOf(3.0, 2.2).any { startY ->
+                    (0..60).any { i ->
+                        listOf(1.0, 0.9).any { frac ->
+                            tryBackIn(ParkingSimulator(car, ParkingMaps.perpendicular(target, full)), startY, slotX - 1.3 + i * 0.1, frac)
+                        }
+                    }
+                }
+                assertTrue("${car.name}: ${target + 1}번 칸 주차 경로를 찾지 못함", solved)
+            }
+        }
+    }
+
+    @Test
+    fun 랜덤_주차장은_목표_칸이_비어_있고_옆_칸은_차있다() {
+        repeat(50) { seed ->
+            val map = ParkingMaps.randomPerpendicular(kotlin.random.Random(seed))
+            assertTrue(map.parkedCars.none { it.center == map.slot.center })
+            assertTrue(map.bays.indexOfFirst { it.center == map.slot.center } in ParkingMaps.TARGET_RANGE)
+            val neighbors = map.bays.filter { kotlin.math.abs(it.center.x - map.slot.center.x) in 2.0..3.0 }
+            neighbors.forEach { n -> assertTrue(map.parkedCars.any { it.center == n.center }) }
+        }
+    }
+
     private fun tryBackIn(sim: ParkingSimulator, startY: Double, stopX: Double, steerFrac: Double): Boolean {
         sim.reset(CarPose(sim.map.start.x, startY, 0.0))
         val input = FakeInput(brakePressed = false)

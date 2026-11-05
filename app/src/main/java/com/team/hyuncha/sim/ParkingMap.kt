@@ -1,6 +1,7 @@
 package com.team.hyuncha.sim
 
 import kotlin.math.PI
+import kotlin.random.Random
 
 /** 차의 위치와 방향. (x, y)는 뒷바퀴 축 중심, heading은 차가 바라보는 방향(라디안) */
 data class CarPose(val x: Double, val y: Double, val heading: Double)
@@ -31,14 +32,24 @@ object ParkingMaps {
     private const val SLOT_D = 5.2
     private const val AISLE_W = 6.0   // 직각주차 통로 폭
 
+    const val SLOT_COUNT = 8
+
+    /**
+     * 목표 칸이 될 수 있는 칸 (0부터). 오른쪽 끝 두 칸(7·8번)은 오른쪽 벽까지 여유가 없어
+     * 기본 후진 주차(전진 → 꺾으며 후진)로는 못 넣으므로 목표에서 뺌 (단위 테스트로 확인)
+     */
+    val TARGET_RANGE = 0..5
+
     /**
      * 직각주차: 위쪽이 통로, 아래쪽에 주차 칸 8개.
-     * 차는 통로 왼쪽에서 오른쪽을 보고 출발하고, 가운데 빈 칸에 넣으면 성공.
+     * 차는 통로 왼쪽에서 오른쪽을 보고 출발하고, 목표 칸(targetIndex)에 넣으면 성공.
+     * @param parkedIndices 다른 차가 세워진 칸 번호 (0부터). 목표 칸은 들어 있어도 무시함
      */
-    fun perpendicular(): ParkingMap {
-        val slotCount = 8
-        val targetIndex = 4
-        val parkedIndices = listOf(0, 1, 3, 5, 6)
+    fun perpendicular(
+        targetIndex: Int = 4,
+        parkedIndices: List<Int> = listOf(0, 1, 3, 5, 6),
+    ): ParkingMap {
+        val slotCount = SLOT_COUNT
         val slotsLeft = 3.6
         val slotTop = AISLE_W
         val slotBottom = slotTop + SLOT_D
@@ -59,7 +70,7 @@ object ParkingMaps {
         )
 
         // 이웃 칸에 세워진 차 (칸 가운데, 일반 승용차 크기)
-        val parkedCars = parkedIndices.map { i ->
+        val parkedCars = parkedIndices.filter { it != targetIndex && it in 0 until slotCount }.distinct().map { i ->
             slotRect(i).copy(halfLength = 2.4, halfWidth = 0.93)
         }
 
@@ -80,5 +91,17 @@ object ParkingMaps {
             start = CarPose(x = 5.5, y = AISLE_W / 2, heading = 0.0),
             bays = (0 until slotCount).map(::slotRect),
         )
+    }
+
+    /**
+     * 연습할 때마다 다른 주차장: 목표 칸은 TARGET_RANGE 안에서 아무 칸이나, 나머지 칸은 대부분(약 75%) 차가 세워져 있음.
+     * 목표 칸 바로 옆 두 칸은 항상 채워서 너무 쉬워지지 않게 함.
+     */
+    fun randomPerpendicular(random: Random = Random.Default): ParkingMap {
+        val target = TARGET_RANGE.random(random)
+        val parked = (0 until SLOT_COUNT).filter { i ->
+            i != target && (kotlin.math.abs(i - target) == 1 || random.nextDouble() < 0.75)
+        }
+        return perpendicular(targetIndex = target, parkedIndices = parked)
     }
 }

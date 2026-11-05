@@ -35,6 +35,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -98,7 +99,9 @@ fun ParkingScreen(
     val vehicleInput = remember(vehicle) {
         vehicle?.let { VehicleInput(it) { currentCar.steeringRatio } }
     }
-    val sim = remember(car) { ParkingSimulator(car, ParkingMaps.perpendicular()) }
+    // 다시 할 때마다 round가 바뀌어 목표 칸·주차된 차가 새로 배치됨
+    var round by remember { mutableIntStateOf(0) }
+    val sim = remember(car, round) { ParkingSimulator(car, ParkingMaps.randomPerpendicular()) }
     val frame = remember { mutableLongStateOf(0L) }
     val focus = remember { FocusRequester() }
 
@@ -130,7 +133,7 @@ fun ParkingScreen(
     LaunchedEffect(Unit) { focus.requestFocus() }
 
     fun restart() {
-        sim.reset()
+        round++
         touchInput.reset()
         vehicleInput?.reset()
     }

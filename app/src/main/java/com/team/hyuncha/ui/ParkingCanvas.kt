@@ -11,6 +11,7 @@ import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.graphics.ColorMatrix
 import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
@@ -50,7 +51,7 @@ private val WheelStop = Color(0xFFC9A646)
 private val TargetGreen = Color(0xFF4CD08A)
 
 // 차
-private val MyCarBlue = Color(0xFF2F7BEA)
+private val MyCarBody = Color(0xFFEDEDEA)  // 이미지가 없을 때 코드로 그리는 내 차 색
 private val CrashedRed = Color(0xFFE5484D)
 private val GlassDark = Color(0xFF1B2530)
 private val HeadLight = Color(0xFFFFF4D6)
@@ -60,9 +61,19 @@ private val ParkedColors = listOf(
     Color(0xFFE8E8E6), Color(0xFF2B2D31), Color(0xFF8E949C), Color(0xFF26395C), Color(0xFF8C2B2B),
 )
 // 은색 이미지에 곱해서 색을 입힘 (흰색 = 원래 은색 그대로). 유리·외곽선은 어두워서 거의 안 바뀜
-private val ParkedTints = listOf(Color.White, Color(0xFF5A5E66), Color(0xFFD9C7A3), Color(0xFFC25555), Color(0xFFB8BCC4))
-private val MyCarTint = Color(0xFF7FB2FF)
-private val CrashedTint = Color(0xFFFF7A7A)
+// 주차된 차 색 후보 (내 차가 흰색이라 흰색·밝은 은색은 뺌)
+private val ParkedTints = listOf(
+    Color(0xFF4A4E56), Color(0xFF2E3036), Color(0xFFD9C7A3), Color(0xFFC25555),
+    Color(0xFF5D7FC4), Color(0xFF9BA1AA), Color(0xFF5E8A6E),
+)
+// 내 차: 은색 이미지를 살짝 밝게 해서 흰색으로
+private val MyCarWhite = ColorFilter.colorMatrix(
+    ColorMatrix(floatArrayOf(1.12f, 0f, 0f, 0f, 22f, 0f, 1.12f, 0f, 0f, 22f, 0f, 0f, 1.12f, 0f, 22f, 0f, 0f, 0f, 1f, 0f)),
+)
+private val CrashedTint = ColorFilter.tint(Color(0xFFFF7A7A), BlendMode.Modulate)
+
+/** 주차된 차 한 대의 모습: 차종 이미지, 색, 앞뒤 방향 */
+private class ParkedStyle(val spriteIndex: Int, val tint: Color, val flipped: Boolean)
 
 // 안내
 private val GuideRed = Color(0xFFFF5A52)
@@ -97,6 +108,13 @@ fun ParkingCanvas(
     val speckles = remember(sim.map) { makeSpeckles(sim.map) }
     val sprites = rememberCarTopSprites()
     val spriteList = remember(sprites) { sprites.values.toList() }
+    // 주차장 배치가 바뀔 때마다 주차된 차의 차종·색·방향을 새로 뽑음 (같은 배치에서는 그대로)
+    val parkedStyles = remember(sim.map) {
+        val rnd = Random(sim.map.parkedCars.hashCode())
+        sim.map.parkedCars.map {
+            ParkedStyle(spriteIndex = rnd.nextInt(4), tint = ParkedTints.random(rnd), flipped = rnd.nextBoolean())
+        }
+    }
 
     Canvas(modifier) {
         frame()  // 이 값을 읽어둬야 시뮬레이터가 움직일 때 다시 그려짐
@@ -122,13 +140,14 @@ fun ParkingCanvas(
 
         map.parkedCars.forEachIndexed { i, rect ->
             // 주차된 차는 색과 방향을 섞어서 같은 차만 늘어선 느낌을 줄임
-            val heading = if (i % 2 == 0) rect.angle else rect.angle + Math.PI
+            val style = parkedStyles[i]
+            val heading = if (style.flipped) rect.angle + Math.PI else rect.angle
             drawCarTopDown(
                 center = rect.center, heading = heading,
                 lengthM = rect.halfLength * 2, widthM = rect.halfWidth * 2,
                 bodyColor = ParkedColors[i % ParkedColors.size], proj = proj,
-                sprite = spriteList.getOrNull((i * 3 + 1) % spriteList.size.coerceAtLeast(1)),
-                tint = ParkedTints[i % ParkedTints.size],
+                sprite = spriteList.getOrNull(style.spriteIndex % spriteList.size.coerceAtLeast(1)),
+                colorFilter = ColorFilter.tint(style.tint, BlendMode.Modulate),
             )
         }
 
@@ -151,10 +170,10 @@ fun ParkingCanvas(
         drawCarTopDown(
             center = body.center, heading = sim.pose.heading,
             lengthM = sim.car.lengthM, widthM = sim.car.widthM,
-            bodyColor = if (sim.status == SimStatus.COLLIDED) CrashedRed else MyCarBlue,
+            bodyColor = if (sim.status == SimStatus.COLLIDED) CrashedRed else MyCarBody,
             proj = proj,
             sprite = sprites.forCar(sim.car),
-            tint = if (sim.status == SimStatus.COLLIDED) CrashedTint else MyCarTint,
+            colorFilter = if (sim.status == SimStatus.COLLIDED) CrashedTint else MyCarWhite,
             lights = CarLights(brake = braking(), reverse = reversing),
             frontWheels = FrontWheels(
                 axleOffsetM = sim.car.wheelBaseM - (sim.car.lengthM / 2 - sim.car.rearOverhangM),
@@ -307,7 +326,7 @@ private fun DrawScope.drawCarTopDown(
     lights: CarLights? = null,
     frontWheels: FrontWheels? = null,
     sprite: CarTopSprite? = null,
-    tint: Color? = null,
+    colorFilter: ColorFilter? = null,
 ) {
     val c = proj.toScreen(center)
     val l = proj.m(lengthM)
@@ -341,7 +360,7 @@ private fun DrawScope.drawCarTopDown(
                 image = sprite.image,
                 dstOffset = IntOffset((-l / 2).roundToInt(), (-w / 2 - sprite.bodyTop * imgH).roundToInt()),
                 dstSize = IntSize(l.roundToInt(), imgH.roundToInt()),
-                colorFilter = tint?.let { ColorFilter.tint(it, BlendMode.Modulate) },
+                colorFilter = colorFilter,
                 filterQuality = FilterQuality.High,
             )
         } else {
