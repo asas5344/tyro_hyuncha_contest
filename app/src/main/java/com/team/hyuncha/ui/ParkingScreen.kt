@@ -161,7 +161,13 @@ fun ParkingScreen(
                     .weight(1f)
                     .fillMaxHeight(),
             ) {
-                ParkingCanvas(sim, { frame.longValue }, Modifier.fillMaxSize())
+                ParkingCanvas(
+                    sim = sim,
+                    frame = { frame.longValue },
+                    direction = { input.direction },
+                    braking = { input.brakePressed },
+                    modifier = Modifier.fillMaxSize(),
+                )
                 SimHud(
                     sim = sim,
                     frame = { frame.longValue },

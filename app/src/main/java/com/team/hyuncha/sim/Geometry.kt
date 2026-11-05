@@ -43,6 +43,14 @@ data class OrientedRect(
             abs(d dot axisW) <= halfWidth + tolerance
     }
 
+    /** 사각형 위(테두리 포함)에서 p에 가장 가까운 점. p가 안에 있으면 p 자신 */
+    fun closestPoint(p: Vec2): Vec2 {
+        val d = p - center
+        val l = (d dot axisL).coerceIn(-halfLength, halfLength)
+        val w = (d dot axisW).coerceIn(-halfWidth, halfWidth)
+        return center + axisL * l + axisW * w
+    }
+
     /** other가 이 사각형 안에 완전히 들어와 있는지 */
     fun containsRect(other: OrientedRect) = other.corners().all { contains(it) }
 

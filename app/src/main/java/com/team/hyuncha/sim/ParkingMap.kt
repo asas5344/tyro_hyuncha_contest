@@ -19,6 +19,7 @@ data class ParkingMap(
     val slot: OrientedRect,                  // 목표 주차 칸
     val lines: List<Pair<Vec2, Vec2>>,       // 바닥 주차선 (그리기용)
     val start: CarPose,
+    val bays: List<OrientedRect> = emptyList(),  // 모든 주차 칸 (칸 번호·멈춤턱 그리기용)
 ) {
     /** 부딪히면 실패인 것들 */
     val obstacles: List<OrientedRect> = walls + parkedCars
@@ -77,6 +78,7 @@ object ParkingMaps {
             slot = slotRect(targetIndex),
             lines = lines,
             start = CarPose(x = 5.5, y = AISLE_W / 2, heading = 0.0),
+            bays = (0 until slotCount).map(::slotRect),
         )
     }
 }
