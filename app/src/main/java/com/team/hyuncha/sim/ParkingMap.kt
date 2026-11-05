@@ -6,10 +6,11 @@ import kotlin.random.Random
 /** 차의 위치와 방향. (x, y)는 뒷바퀴 축 중심, heading은 차가 바라보는 방향(라디안) */
 data class CarPose(val x: Double, val y: Double, val heading: Double)
 
+/** 주차 방식. label은 화면에 보이는 이름 (홈 카드·주차 화면 제목에 같이 씀) */
 enum class ParkingMode(val label: String) {
-    PERPENDICULAR("직각주차"),
-    PARALLEL("평행주차"),
-    DIAGONAL("사선주차"),
+    PERPENDICULAR("T자 주차"),   // 코드에서는 직각주차(perpendicular), 화면에서는 운전면허 시험 용어인 T자 주차
+    PARALLEL("평행 주차"),
+    DIAGONAL("사선 주차"),
 }
 
 /** 주차장 한 판의 구성. 단위 m */

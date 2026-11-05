@@ -45,7 +45,7 @@ class HyunchaNavigationTest {
         capture("home_screen", "home-standard.png")
         compose.onNodeWithTag("start_practice").performScrollTo().performClick(); settle()
         compose.onNodeWithTag("parking_screen").assertIsDisplayed()
-        compose.onNodeWithText("직각주차 · 그랜저").assertIsDisplayed()
+        compose.onNodeWithText("T자 주차 · 그랜저").assertIsDisplayed()
         capture("parking_screen", "parking-standard.png")
         compose.onNodeWithTag("back_home").performClick(); settle()
         compose.onNodeWithTag("home_screen").assertIsDisplayed()
@@ -55,19 +55,19 @@ class HyunchaNavigationTest {
         openApp()
         compose.onNodeWithTag("mode_PARALLEL").performScrollTo().performClick(); settle()
         compose.onNodeWithTag("start_practice").performScrollTo().performClick(); settle()
-        compose.onNodeWithText("평행주차 · 그랜저").assertIsDisplayed()
+        compose.onNodeWithText("평행 주차 · 그랜저").assertIsDisplayed()
         capture("parking_screen", "parking-parallel.png")
         // 홈으로 돌아와도 고른 주차 방식이 유지됨
         compose.onNodeWithTag("back_home").performClick(); settle()
         compose.onNodeWithTag("start_practice").performScrollTo().performClick(); settle()
-        compose.onNodeWithText("평행주차 · 그랜저").assertIsDisplayed()
+        compose.onNodeWithText("평행 주차 · 그랜저").assertIsDisplayed()
     }
 
     @Test fun diagonalParkingCanBeSelectedAndStarted() {
         openApp()
         compose.onNodeWithTag("mode_DIAGONAL").performScrollTo().performClick(); settle()
         compose.onNodeWithTag("start_practice").performScrollTo().performClick(); settle()
-        compose.onNodeWithText("사선주차 · 그랜저").assertIsDisplayed()
+        compose.onNodeWithText("사선 주차 · 그랜저").assertIsDisplayed()
         capture("parking_screen", "parking-diagonal.png")
     }
 
@@ -77,7 +77,7 @@ class HyunchaNavigationTest {
         compose.onNodeWithTag("select_car_아반떼").performScrollTo().performClick(); settle()
         compose.onNodeWithTag("home_car_name", useUnmergedTree = true).assertTextEquals("아반떼")
         compose.onNodeWithTag("start_practice").performScrollTo().performClick(); settle()
-        compose.onNodeWithText("직각주차 · 아반떼").assertIsDisplayed()
+        compose.onNodeWithText("T자 주차 · 아반떼").assertIsDisplayed()
         compose.onNodeWithText("차종").assertDoesNotExist()
         compose.onNodeWithText("그랜저 (세단)").assertDoesNotExist()
         compose.onNodeWithTag("back_home").performClick(); settle()

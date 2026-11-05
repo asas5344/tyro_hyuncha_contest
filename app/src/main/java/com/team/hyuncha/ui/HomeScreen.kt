@@ -90,15 +90,15 @@ fun HomeScreen(
                     Spacer(Modifier.height(16.dp))
                     // T자(직각)·평행·사선 주차 모두 선택 가능하다.
                     val perpendicular: @Composable (Modifier) -> Unit = { m ->
-                        ParkingChoice("T자 주차", mode == ParkingMode.PERPENDICULAR, true,
+                        ParkingChoice(ParkingMode.PERPENDICULAR.label, mode == ParkingMode.PERPENDICULAR, true,
                             { onModeChange(ParkingMode.PERPENDICULAR) }, m.testTag("mode_PERPENDICULAR"))
                     }
                     val parallel: @Composable (Modifier) -> Unit = { m ->
-                        ParkingChoice("평행 주차", mode == ParkingMode.PARALLEL, true,
+                        ParkingChoice(ParkingMode.PARALLEL.label, mode == ParkingMode.PARALLEL, true,
                             { onModeChange(ParkingMode.PARALLEL) }, m.testTag("mode_PARALLEL"))
                     }
                     val diagonal: @Composable (Modifier) -> Unit = { m ->
-                        ParkingChoice("사선 주차", mode == ParkingMode.DIAGONAL, true,
+                        ParkingChoice(ParkingMode.DIAGONAL.label, mode == ParkingMode.DIAGONAL, true,
                             { onModeChange(ParkingMode.DIAGONAL) }, m.testTag("mode_DIAGONAL"))
                     }
                     if (wide && scale <= 1.25f) {
