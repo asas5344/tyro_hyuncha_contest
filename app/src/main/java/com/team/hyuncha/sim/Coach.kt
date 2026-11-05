@@ -165,65 +165,130 @@ object Coach {
 
     // ───────── 피드백: 내 주행을 모범 주행의 핵심 값과 비교 ─────────
 
+    /** 내가 움직인 구간 하나: 같은 방향으로 계속 움직인 동안 */
+    private class Segment(val direction: Direction, val frames: List<SimFrame>) {
+        val start get() = frames.first()
+    }
+
     /**
-     * 내 주행에서 문제였던 점을 최대 3줄로. 표준 순서(전진 → 후진) 기준으로 비교하므로,
-     * 완전히 다른 방법으로 움직였다면 일반적인 안내만 나옴.
+     * 기록을 실제로 움직인 방향(앞·뒤)별 구간으로 나눔.
+     * 방향 버튼이 아니라 실제 이동으로 판단하므로, 처음부터 후진한 경우도 잡힘.
      */
-    fun feedback(mine: ParkingSimulator, plan: CoachPlan?): List<String> {
+    private fun segments(history: List<SimFrame>): List<Segment> {
+        val result = mutableListOf<Segment>()
+        var current = mutableListOf<SimFrame>()
+        var dir: Direction? = null
+        for ((a, b) in history.zipWithNext()) {
+            val dx = b.pose.x - a.pose.x
+            val dy = b.pose.y - a.pose.y
+            if (hypot(dx, dy) < 1e-4) continue                       // 멈춰 있음
+            val along = dx * kotlin.math.cos(a.pose.heading) + dy * kotlin.math.sin(a.pose.heading)
+            val d = if (along >= 0) Direction.FORWARD else Direction.REVERSE
+            if (d != dir) {
+                if (current.isNotEmpty() && dir != null) result += Segment(dir, current)
+                current = mutableListOf(a)
+                dir = d
+            }
+            current += b
+        }
+        if (current.isNotEmpty() && dir != null) result += Segment(dir, current)
+        return result
+    }
+
+    private fun travelled(seg: Segment): Double =
+        seg.frames.zipWithNext().sumOf { (a, b) -> hypot(b.pose.x - a.pose.x, b.pose.y - a.pose.y) }
+
+    /**
+     * 내 주행에 대한 피드백 (최대 3줄).
+     *
+     * 틀린 조언을 하지 않는 게 가장 중요하므로:
+     * - 성공했으면 방법을 따지지 않음 (앞으로 넣든, 여러 번 맞추든 성공은 성공). 마무리 품질만 짧게
+     * - 실패했을 때만 모범과 비교하고, 그것도 내 주행이 표준 순서(앞으로 간 뒤 출발 방향 그대로 후진)를
+     *   따랐을 때만 숫자로 비교. 아니면 일반적인 안내만
+     */
+    fun feedback(mine: ParkingSimulator, plan: CoachPlan?): List<String> = when (mine.status) {
+        SimStatus.PARKED -> successFeedback(mine, plan)
+        SimStatus.COLLIDED -> collisionFeedback(mine, plan)
+        SimStatus.DRIVING -> emptyList()
+    }
+
+    private fun successFeedback(mine: ParkingSimulator, plan: CoachPlan?): List<String> {
+        val r = mine.result ?: return emptyList()
         val lines = mutableListOf<String>()
-        val firstReverse = mine.events.filterIsInstance<SimEvent.DirectionChanged>().firstOrNull { it.to == Direction.REVERSE }
-
-        if (plan == null) {
-            if (mine.status == SimStatus.COLLIDED) lines += "다시 보기로 어디서 닿았는지 확인해 보세요."
-            return lines
+        if (r.angleErrorDeg > 3) lines += "칸과 ${deg(r.angleErrorDeg)} 정도 비뚤게 섰어요. 마지막에 핸들을 푸는 때를 조금 조정해 보세요."
+        if (r.centerOffsetM > 0.4) lines += "칸 가운데에서 ${m(r.centerOffsetM)} 벗어났어요."
+        val modelChanges = plan?.run?.directionChanges
+        if (modelChanges != null && r.directionChanges >= modelChanges + 2) {
+            lines += "전진·후진을 ${r.directionChanges}번 바꿨어요. 모범 주행 순서로 하면 더 적게 바꾸고도 넣을 수 있어요."
         }
-        if (firstReverse == null) {
-            lines += "후진을 하지 않았어요. 모범 주행처럼 먼저 앞으로 가서 멈춘 뒤 후진해요."
-            return lines
-        }
-
-        // 1) 후진을 시작한 위치
-        val startX = mine.frameAt(firstReverse.timeSec).pose.x
-        val dx = startX - plan.reverseStartX
-        val where = if (mine.map.mode == ParkingMode.PARALLEL) "앞차 옆" else "칸"
-        if (dx < -0.6) lines += "${where}을 덜 지나서 후진을 시작했어요. 모범보다 ${m(-dx)} 더 가서 멈춰요."
-        else if (dx > 0.6) lines += "${where}을 너무 지나서 후진을 시작했어요. 모범보다 ${m(dx)} 덜 가서 멈춰요."
-
-        // 2) 첫 후진 때 핸들
-        val nextChange = mine.events.filterIsInstance<SimEvent.DirectionChanged>().firstOrNull { it.timeSec > firstReverse.timeSec }
-        val reverseFrames = mine.history.filter {
-            it.timeSec >= firstReverse.timeSec && (nextChange == null || it.timeSec < nextChange.timeSec)
-        }
-        val maxRight = reverseFrames.maxOfOrNull { it.wheelAngleDeg } ?: 0.0
-        val maxLeft = reverseFrames.minOfOrNull { it.wheelAngleDeg } ?: 0.0
-        when {
-            maxRight < 5 && maxLeft < -5 ->
-                lines += "후진할 때 핸들을 반대(왼쪽)로 돌렸어요. 칸이 오른쪽에 있으면 핸들도 오른쪽으로 돌려요."
-            maxRight < plan.reverseWheelDeg * 0.7 ->
-                lines += "후진할 때 핸들을 덜 돌렸어요. 바퀴 ${deg(maxRight)} → 모범 ${deg(plan.reverseWheelDeg)} (오른쪽 끝까지)."
-        }
-
-        // 3) 평행주차: 비스듬히 들어간 각도
-        if (mine.map.mode == ParkingMode.PARALLEL) {
-            val lean = -(reverseFrames.minOfOrNull { it.pose.heading } ?: 0.0)
-            val leanDeg = Math.toDegrees(lean)
-            if (leanDeg < plan.leanDeg - 10) lines += "충분히 비스듬해지기 전에 핸들을 반대로 꺾었어요. ${deg(leanDeg)} → 모범 ${deg(plan.leanDeg)}."
-            else if (leanDeg > plan.leanDeg + 15) lines += "너무 비스듬하게 들어갔어요. ${deg(leanDeg)} → 모범 ${deg(plan.leanDeg)}."
-        }
-
-        // 4) 성공했을 때는 마무리 품질
-        if (mine.status == SimStatus.PARKED) {
-            val r = mine.result!!
-            val extra = r.directionChanges - plan.run.directionChanges
-            if (extra > 0) lines += "모범보다 전진·후진을 ${extra}번 더 바꿨어요. 위 순서대로 하면 한 번에 들어가요."
-            if (r.angleErrorDeg > 3) lines += "칸과 ${deg(r.angleErrorDeg)} 비뚤게 섰어요. 핸들을 푸는 때를 조금 조정해 보세요."
-            if (lines.isEmpty()) lines += "모범 주행과 거의 같아요. 잘했어요!"
-        }
-
-        if (lines.isEmpty() && mine.status == SimStatus.COLLIDED) {
-            lines += "순서는 모범과 비슷했어요. 모범 주행을 보며 핸들을 풀고 꺾는 때를 맞춰 보세요."
-        }
+        if (lines.isEmpty()) lines += "깔끔하게 주차했어요. 잘했어요!"
         return lines.take(3)
+    }
+
+    private fun collisionFeedback(mine: ParkingSimulator, plan: CoachPlan?): List<String> {
+        val segs = segments(mine.history).filter { travelled(it) > 0.15 }   // 아주 조금 움찔한 건 무시
+        val hitDirection = segs.lastOrNull()?.direction
+        val general = "모범 주행을 보고 같은 순서로 따라 해 보세요."
+
+        if (plan == null || segs.isEmpty()) return listOf(general)
+
+        // 앞으로 가다가 닿음 (처음 전진이든 나중에 다시 전진이든)
+        if (hitDirection == Direction.FORWARD) {
+            return if (segs.size == 1) listOf(
+                "앞으로 가다가 닿았어요. 앞쪽 센서가 노랗게 바뀌면 브레이크를 밟아 멈춰요.",
+                "모범 주행처럼 칸을 조금 지나 멈춘 뒤, 후진으로 넣으면 더 쉬워요.",
+            ) else listOf("앞으로 다시 맞추다가 닿았어요. 앞쪽 센서를 보며 천천히 움직여요.", general)
+        }
+
+        // 여기부터는 후진하다 닿음. 표준 순서(전진 1번 → 후진)이고, 후진을 시작할 때 차가 출발 방향 그대로였을 때만 숫자로 비교
+        val first = segs[0]
+        val firstReverse = segs.getOrNull(1)
+        val startHeading = mine.map.start.heading
+        val standardLike = first.direction == Direction.FORWARD && firstReverse?.direction == Direction.REVERSE &&
+            segs.size == 2 && abs(angleDiff(firstReverse.start.pose.heading, startHeading)) < Math.toRadians(15.0)
+        if (!standardLike || firstReverse == null) {
+            return listOf("모범 주행과 다른 순서로 움직여서 자세히 비교하기 어려워요.", general)
+        }
+
+        val lines = mutableListOf<String>()
+
+        // 1) 후진을 시작한 위치 (출발 방향을 따라 잰 거리)
+        val dx = firstReverse.start.pose.x - plan.reverseStartX
+        if (dx < -0.6) lines += "후진을 일찍 시작했어요. 모범 주행은 ${m(-dx)} 더 앞으로 가서 멈춘 뒤 후진해요."
+        else if (dx > 0.6) lines += "후진을 늦게 시작했어요. 모범 주행은 ${m(dx)} 덜 가서 멈춘 뒤 후진해요."
+
+        // 2) 후진하며 핸들: 오른쪽이 양수. 실제로 1m 이상 후진한 경우만
+        if (travelled(firstReverse) > 1.0) {
+            val maxRight = firstReverse.frames.maxOf { it.wheelAngleDeg }
+            val maxLeft = firstReverse.frames.minOf { it.wheelAngleDeg }
+            val firstTurn = if (mine.map.mode == ParkingMode.PARALLEL) "처음 후진할 때" else "후진할 때"
+            when {
+                maxRight < 5 && maxLeft < -5 ->
+                    lines += "${firstTurn} 핸들을 왼쪽으로 돌렸어요. 목표 칸이 오른쪽에 있어서 모범 주행은 오른쪽으로 돌려요."
+                maxRight < plan.reverseWheelDeg * 0.7 ->
+                    lines += "${firstTurn} 핸들을 덜 돌렸어요. 바퀴 ${deg(maxRight)}, 모범 주행은 ${deg(plan.reverseWheelDeg)}예요."
+            }
+        }
+
+        // 3) 평행주차: 오른쪽으로 꺾어 후진하며 비스듬해진 정도
+        if (mine.map.mode == ParkingMode.PARALLEL && travelled(firstReverse) > 1.0) {
+            val leanDeg = Math.toDegrees(-firstReverse.frames.minOf { angleDiff(it.pose.heading, startHeading) })
+            if (leanDeg > 5) {
+                if (leanDeg < plan.leanDeg - 10) lines += "충분히 비스듬해지기 전에 닿았거나 반대로 꺾었어요. ${deg(leanDeg)}, 모범 주행은 약 ${deg(plan.leanDeg)}예요."
+                else if (leanDeg > plan.leanDeg + 15) lines += "너무 비스듬하게 들어갔어요. ${deg(leanDeg)}, 모범 주행은 약 ${deg(plan.leanDeg)}예요."
+            }
+        }
+
+        if (lines.isEmpty()) lines += "순서는 모범 주행과 비슷했어요. 모범 주행을 보며 핸들을 꺾고 푸는 때를 맞춰 보세요."
+        return lines.take(3)
+    }
+
+    /** 두 방향의 차이(라디안, -π~π) */
+    private fun angleDiff(a: Double, b: Double): Double {
+        var d = (a - b) % (2 * PI)
+        if (d > PI) d -= 2 * PI
+        if (d < -PI) d += 2 * PI
+        return d
     }
 
     private fun m(v: Double) = String.format(Locale.US, "%.1fm", v)

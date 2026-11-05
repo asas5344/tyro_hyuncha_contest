@@ -60,7 +60,7 @@ class CoachTest {
     @Test
     fun 모범을_그대로_따라하면_잘했다고_한다() {
         val plan = Coach.solve(CarPresets.AVANTE, ParkingMaps.perpendicular())!!
-        assertEquals(listOf("모범 주행과 거의 같아요. 잘했어요!"), Coach.feedback(plan.run, plan))
+        assertEquals(listOf("깔끔하게 주차했어요. 잘했어요!"), Coach.feedback(plan.run, plan))
     }
 
     @Test
@@ -68,7 +68,10 @@ class CoachTest {
         val map = ParkingMaps.perpendicular()
         val plan = Coach.solve(CarPresets.AVANTE, map)!!
         val mine = drive(map, stopX = plan.reverseStartX - 2.0, reverseSteer = CarPresets.AVANTE.maxSteeringWheelDeg)
-        assertTrue(Coach.feedback(mine, plan).joinToString().contains("덜 지나서"))
+        assertEquals(SimStatus.COLLIDED, mine.status)
+        val text = Coach.feedback(mine, plan).joinToString()
+        // 브레이크를 밟는 동안 조금 밀리므로 정확히 2.0m는 아님
+        assertTrue(text, text.contains("일찍 시작했어요") && text.contains("더 앞으로 가서"))
     }
 
     @Test
@@ -76,7 +79,9 @@ class CoachTest {
         val map = ParkingMaps.perpendicular()
         val plan = Coach.solve(CarPresets.AVANTE, map)!!
         val mine = drive(map, stopX = plan.reverseStartX, reverseSteer = -CarPresets.AVANTE.maxSteeringWheelDeg)
-        assertTrue(Coach.feedback(mine, plan).joinToString().contains("반대"))
+        assertEquals(SimStatus.COLLIDED, mine.status)
+        val text = Coach.feedback(mine, plan).joinToString()
+        assertTrue(text, text.contains("왼쪽으로 돌렸어요"))
     }
 
     @Test
@@ -84,7 +89,9 @@ class CoachTest {
         val map = ParkingMaps.perpendicular()
         val plan = Coach.solve(CarPresets.AVANTE, map)!!
         val mine = drive(map, stopX = plan.reverseStartX, reverseSteer = CarPresets.AVANTE.maxSteeringWheelDeg * 0.4)
-        assertTrue(Coach.feedback(mine, plan).joinToString().contains("덜 돌렸어요"))
+        assertEquals(SimStatus.COLLIDED, mine.status)
+        val text = Coach.feedback(mine, plan).joinToString()
+        assertTrue(text, text.contains("덜 돌렸어요"))
     }
 
     /** 사용자 흉내: 앞으로 가서 stopX에서 멈추고, 핸들을 reverseSteer로 두고 부딪히거나 10초 지날 때까지 후진 */
@@ -97,7 +104,62 @@ class CoachTest {
         input.direction = Direction.REVERSE
         input.steeringDeg = reverseSteer
         input.brakePressed = false
-        repeat(600) { sim.step(input, dt) }
+        repeat(60 * 30) { sim.step(input, dt) }
         return sim
+    }
+
+    // ───── 다른 방법으로 움직였을 때 틀린 조언을 하지 않는지 ─────
+
+    @Test
+    fun 앞으로_넣어서_성공하면_후진_얘기를_하지_않는다() {
+        val map = ParkingMaps.perpendicular()
+        val car = CarPresets.AVANTE
+        val plan = Coach.solve(car, map)!!
+        val sim = ParkingSimulator(car, map)
+        // 목표 칸 위 통로에서 칸을 보고(아래 방향) 서 있다가 앞으로 넣음
+        sim.reset(CarPose(map.slot.center.x, 1.74, Math.PI / 2))
+        val input = UserInput(brakePressed = false)
+        repeat(3000) {
+            if (sim.bodyRect().center.y + sim.speed * sim.speed / (2 * ParkingSimulator.BRAKE_DECEL) < map.slot.center.y) sim.step(input, dt)
+        }
+        input.brakePressed = true
+        repeat(120) { sim.step(input, dt) }
+        assertEquals(SimStatus.PARKED, sim.status)
+        val text = Coach.feedback(sim, plan).joinToString()
+        assertTrue(text, !text.contains("후진"))
+        assertTrue(text, text.contains("잘했어요"))
+    }
+
+    @Test
+    fun 처음부터_후진하다_닿으면_숫자로_비교하지_않는다() {
+        val map = ParkingMaps.perpendicular()
+        val plan = Coach.solve(CarPresets.AVANTE, map)!!
+        val sim = ParkingSimulator(CarPresets.AVANTE, map)
+        val input = UserInput(direction = Direction.REVERSE, brakePressed = false)
+        repeat(60 * 30) { sim.step(input, dt) }
+        assertEquals(SimStatus.COLLIDED, sim.status)
+        val text = Coach.feedback(sim, plan).joinToString()
+        assertTrue(text, text.contains("다른 순서"))
+        assertTrue(text, !text.contains("m 더 가서") && !text.contains("핸들을"))
+    }
+
+    @Test
+    fun 앞으로_가다_닿으면_그렇게_알려준다() {
+        val map = ParkingMaps.perpendicular()
+        val plan = Coach.solve(CarPresets.AVANTE, map)!!
+        val sim = ParkingSimulator(CarPresets.AVANTE, map)
+        val input = UserInput(brakePressed = false)
+        repeat(60 * 60) { sim.step(input, dt) }
+        assertEquals(SimStatus.COLLIDED, sim.status)
+        val text = Coach.feedback(sim, plan).joinToString()
+        assertTrue(text, text.contains("앞으로 가다가 닿았어요"))
+    }
+
+    @Test
+    fun 여러_번_맞춰서_성공해도_방법을_탓하지_않는다() {
+        // 모범 주행 기록 뒤에 앞으로 조금 갔다가 다시 후진해서 성공한 것처럼: 성공이면 전환이 많다는 말만, 순서 비판은 없음
+        val plan = Coach.solve(CarPresets.AVANTE, ParkingMaps.perpendicular())!!
+        val text = Coach.feedback(plan.run, plan).joinToString()
+        assertTrue(text, !text.contains("일찍") && !text.contains("늦게") && !text.contains("덜 돌렸어요"))
     }
 }

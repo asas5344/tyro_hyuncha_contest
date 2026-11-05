@@ -518,6 +518,14 @@ private fun ReplayBar(
                 },
                 fontSize = textSize, fontWeight = FontWeight.Bold,
             )
+            // 모범 주행이 유일한 정답처럼 보이지 않도록 안내
+            if (plan != null) {
+                Text(
+                    "모범 주행은 표준 방법으로 깔끔하게 넣은 예시 하나예요. 유일한 최적 경로는 아니고, 다른 방법으로도 주차할 수 있어요.",
+                    color = Color.White.copy(alpha = 0.7f),
+                    fontSize = textSize * 0.75f,
+                )
+            }
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 Button(onClick = onPlayPause, modifier = Modifier.height(56.dp)) {
                     Text(if (playing) "일시정지" else "재생", fontSize = textSize)
