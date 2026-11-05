@@ -271,11 +271,12 @@ private fun DrawScope.drawBays(map: ParkingMap, proj: Projection, textMeasurer: 
 
     map.bays.forEachIndexed { i, bay ->
         when (map.mode) {
-            ParkingMode.PERPENDICULAR -> {
-                // 칸이 세로(π/2)로 놓여 있으므로 halfLength 방향이 y. 입구 쪽에 번호, 안쪽 끝에 바퀴 멈춤턱
+            ParkingMode.PERPENDICULAR, ParkingMode.DIAGONAL -> {
+                // 칸 길이 방향(halfLength)이 칸 안쪽. 입구 쪽에 번호, 안쪽 끝에 바퀴 멈춤턱 (직각 = A, 사선 = C)
                 val entrance = bay.center - Vec2.unit(bay.angle) * (bay.halfLength - 0.55)
                 val stopPos = bay.center + Vec2.unit(bay.angle) * (bay.halfLength - 0.55)
-                drawLabel(textMeasurer, "A${i + 1}", entrance, proj, sizeM = 0.42, color = LineWhite.copy(alpha = 0.55f))
+                val prefix = if (map.mode == ParkingMode.DIAGONAL) "C" else "A"
+                drawLabel(textMeasurer, "$prefix${i + 1}", entrance, proj, sizeM = 0.42, color = LineWhite.copy(alpha = 0.55f))
                 drawOriented(OrientedRect(stopPos, halfLength = 0.09, halfWidth = 0.75, angle = bay.angle), proj, WheelStop)
             }
             ParkingMode.PARALLEL -> {

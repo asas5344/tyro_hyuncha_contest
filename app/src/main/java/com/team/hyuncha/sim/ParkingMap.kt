@@ -9,6 +9,7 @@ data class CarPose(val x: Double, val y: Double, val heading: Double)
 enum class ParkingMode(val label: String) {
     PERPENDICULAR("직각주차"),
     PARALLEL("평행주차"),
+    DIAGONAL("사선주차"),
 }
 
 /** 주차장 한 판의 구성. 단위 m */
@@ -184,9 +185,81 @@ object ParkingMaps {
         return parallel(targetIndex = target, parkedIndices = parked)
     }
 
+    // 사선주차: 통로에 60° 기울어진 칸. 일방통행 통로에서 앞으로 비스듬히 들어감
+    private const val DIAG_ANGLE_DEG = 60.0
+    private const val DIAG_AISLE_W = 5.0
+    const val DIAGONAL_SLOT_COUNT = 8
+
+    /** 목표가 될 수 있는 사선 칸: 왼쪽 끝은 출발점에 너무 가까워 꺾을 거리가 없고, 오른쪽 끝은 옆 차가 한쪽뿐이라 뺌 */
+    val DIAGONAL_TARGET_RANGE = 1..DIAGONAL_SLOT_COUNT - 2
+
+    /**
+     * 사선주차: 위쪽이 일방통행 통로(오른쪽으로 진행), 아래쪽에 60° 기울어진 칸 8개.
+     * 칸은 칸 사이 선(평행사변형) 안에 들어가는 직사각형으로 만들고, 가장 높은 모서리가 통로 경계에 닿게 둠.
+     */
+    fun diagonal(
+        targetIndex: Int = 4,
+        parkedIndices: List<Int> = (0 until DIAGONAL_SLOT_COUNT).toList(),
+    ): ParkingMap {
+        val angle = Math.toRadians(DIAG_ANGLE_DEG)
+        val u = Vec2.unit(angle)                       // 칸 안쪽 방향 (오른쪽 아래)
+        val v = Vec2(-kotlin.math.sin(angle), kotlin.math.cos(angle))
+        val hl = SLOT_D / 2
+        val hw = SLOT_W / 2
+        val spacing = SLOT_W / kotlin.math.sin(angle)  // 통로를 따라 잰 칸 간격 (약 3.0m)
+        val left = 7.0
+        val slotTop = DIAG_AISLE_W
+        // 칸 사이 선 i 위의 점 p_i에서 칸 중심까지: 선을 따라 t, 옆으로 반 칸
+        val t = hl + SLOT_W * kotlin.math.cos(angle) / kotlin.math.sin(angle)
+
+        fun linePoint(i: Int) = Vec2(left + spacing * i, slotTop)
+        fun slotRect(i: Int) = OrientedRect(center = linePoint(i) + u * t - v * hw, halfLength = hl, halfWidth = hw, angle = angle)
+
+        val bays = (0 until DIAGONAL_SLOT_COUNT).map(::slotRect)
+        val bottom = bays.flatMap { it.corners() }.maxOf { it.y }
+        val width = bays.flatMap { it.corners() }.maxOf { it.x } + 3.0
+        val height = bottom + 0.3
+
+        val walls = listOf(
+            OrientedRect(Vec2(width / 2, -0.5), width / 2 + 1, 0.5, 0.0),           // 위
+            OrientedRect(Vec2(width / 2, height + 0.5), width / 2 + 1, 0.5, 0.0),   // 아래
+            OrientedRect(Vec2(-0.5, height / 2), 0.5, height / 2 + 1, 0.0),         // 왼쪽
+            OrientedRect(Vec2(width + 0.5, height / 2), 0.5, height / 2 + 1, 0.0),  // 오른쪽
+        )
+
+        // 세워진 차: 앞으로 들어간 차라 칸 안쪽(오른쪽 아래)을 봄
+        val parkedCars = parkedIndices.filter { it != targetIndex && it in 0 until DIAGONAL_SLOT_COUNT }.distinct()
+            .map { i -> slotRect(i).copy(halfLength = 2.4, halfWidth = 0.93) }
+
+        // 칸 사이 선: 통로 경계에서 칸 끝까지 비스듬히
+        val lines = (0..DIAGONAL_SLOT_COUNT).map { i -> linePoint(i) to linePoint(i) + u * (t + hl) }
+
+        return ParkingMap(
+            mode = ParkingMode.DIAGONAL,
+            widthM = width,
+            heightM = height,
+            walls = walls,
+            parkedCars = parkedCars,
+            slot = slotRect(targetIndex),
+            lines = lines,
+            start = CarPose(x = 2.5, y = DIAG_AISLE_W / 2, heading = 0.0),
+            bays = bays,
+        )
+    }
+
+    /** 연습할 때마다 다른 사선주차: 목표 칸 랜덤, 양옆 칸은 항상 차 있음, 나머지는 약 75% */
+    fun randomDiagonal(random: Random = Random.Default): ParkingMap {
+        val target = DIAGONAL_TARGET_RANGE.random(random)
+        val parked = (0 until DIAGONAL_SLOT_COUNT).filter { i ->
+            i != target && (kotlin.math.abs(i - target) == 1 || random.nextDouble() < 0.75)
+        }
+        return diagonal(targetIndex = target, parkedIndices = parked)
+    }
+
     /** 주차 방식에 맞는 랜덤 주차장 */
     fun random(mode: ParkingMode, random: Random = Random.Default): ParkingMap = when (mode) {
         ParkingMode.PERPENDICULAR -> randomPerpendicular(random)
         ParkingMode.PARALLEL -> randomParallel(random)
+        ParkingMode.DIAGONAL -> randomDiagonal(random)
     }
 }

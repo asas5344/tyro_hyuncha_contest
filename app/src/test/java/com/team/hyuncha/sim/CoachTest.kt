@@ -67,7 +67,7 @@ class CoachTest {
     fun 후진을_너무_일찍_시작하면_더_가서_멈추라고_한다() {
         val map = ParkingMaps.perpendicular()
         val plan = Coach.solve(CarPresets.AVANTE, map)!!
-        val mine = drive(map, stopX = plan.reverseStartX - 2.0, reverseSteer = CarPresets.AVANTE.maxSteeringWheelDeg)
+        val mine = drive(map, stopX = plan.actionStartX - 2.0, reverseSteer = CarPresets.AVANTE.maxSteeringWheelDeg)
         assertEquals(SimStatus.COLLIDED, mine.status)
         val text = Coach.feedback(mine, plan).joinToString()
         // 브레이크를 밟는 동안 조금 밀리므로 정확히 2.0m는 아님
@@ -78,7 +78,7 @@ class CoachTest {
     fun 후진할_때_핸들을_반대로_돌리면_알려준다() {
         val map = ParkingMaps.perpendicular()
         val plan = Coach.solve(CarPresets.AVANTE, map)!!
-        val mine = drive(map, stopX = plan.reverseStartX, reverseSteer = -CarPresets.AVANTE.maxSteeringWheelDeg)
+        val mine = drive(map, stopX = plan.actionStartX, reverseSteer = -CarPresets.AVANTE.maxSteeringWheelDeg)
         assertEquals(SimStatus.COLLIDED, mine.status)
         val text = Coach.feedback(mine, plan).joinToString()
         assertTrue(text, text.contains("왼쪽으로 돌렸어요"))
@@ -88,7 +88,7 @@ class CoachTest {
     fun 후진할_때_핸들을_덜_돌리면_알려준다() {
         val map = ParkingMaps.perpendicular()
         val plan = Coach.solve(CarPresets.AVANTE, map)!!
-        val mine = drive(map, stopX = plan.reverseStartX, reverseSteer = CarPresets.AVANTE.maxSteeringWheelDeg * 0.4)
+        val mine = drive(map, stopX = plan.actionStartX, reverseSteer = CarPresets.AVANTE.maxSteeringWheelDeg * 0.4)
         assertEquals(SimStatus.COLLIDED, mine.status)
         val text = Coach.feedback(mine, plan).joinToString()
         assertTrue(text, text.contains("덜 돌렸어요"))

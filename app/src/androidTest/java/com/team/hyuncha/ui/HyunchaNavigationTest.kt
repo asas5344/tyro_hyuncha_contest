@@ -63,6 +63,14 @@ class HyunchaNavigationTest {
         compose.onNodeWithText("평행주차 · 그랜저").assertIsDisplayed()
     }
 
+    @Test fun diagonalParkingCanBeSelectedAndStarted() {
+        openApp()
+        compose.onNodeWithTag("mode_DIAGONAL").performScrollTo().performClick(); settle()
+        compose.onNodeWithTag("start_practice").performScrollTo().performClick(); settle()
+        compose.onNodeWithText("사선주차 · 그랜저").assertIsDisplayed()
+        capture("parking_screen", "parking-diagonal.png")
+    }
+
     @Test fun selectedCarIsPassedIntoExistingSimulator() {
         openApp()
         compose.onNodeWithTag("choose_car").performScrollTo().performClick(); settle()

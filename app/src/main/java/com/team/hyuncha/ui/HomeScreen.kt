@@ -88,7 +88,7 @@ fun HomeScreen(
                     }
                     Text("연습할 주차 방식", style = MaterialTheme.typography.titleMedium)
                     Spacer(Modifier.height(16.dp))
-                    // 실제 구현된 T자(직각)·평행 주차만 선택 가능하다.
+                    // T자(직각)·평행·사선 주차 모두 선택 가능하다.
                     val perpendicular: @Composable (Modifier) -> Unit = { m ->
                         ParkingChoice("T자 주차", mode == ParkingMode.PERPENDICULAR, true,
                             { onModeChange(ParkingMode.PERPENDICULAR) }, m.testTag("mode_PERPENDICULAR"))
@@ -97,18 +97,22 @@ fun HomeScreen(
                         ParkingChoice("평행 주차", mode == ParkingMode.PARALLEL, true,
                             { onModeChange(ParkingMode.PARALLEL) }, m.testTag("mode_PARALLEL"))
                     }
+                    val diagonal: @Composable (Modifier) -> Unit = { m ->
+                        ParkingChoice("사선 주차", mode == ParkingMode.DIAGONAL, true,
+                            { onModeChange(ParkingMode.DIAGONAL) }, m.testTag("mode_DIAGONAL"))
+                    }
                     if (wide && scale <= 1.25f) {
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                             perpendicular(Modifier.weight(1f))
                             parallel(Modifier.weight(1f))
-                            ParkingChoice("사선 주차", false, false, {}, Modifier.weight(1f))
+                            diagonal(Modifier.weight(1f))
                         }
                     } else {
                         perpendicular(Modifier.fillMaxWidth())
                         Spacer(Modifier.height(12.dp))
                         parallel(Modifier.fillMaxWidth())
-                        Text("사선 주차는 준비 중이에요.", Modifier.padding(top = 12.dp),
-                            color = colors.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium)
+                        Spacer(Modifier.height(12.dp))
+                        diagonal(Modifier.fillMaxWidth())
                     }
                     Text("P단을 유지하고, 전진·후진은 앱에서 선택하세요.", Modifier.padding(top = 18.dp),
                         color = colors.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
