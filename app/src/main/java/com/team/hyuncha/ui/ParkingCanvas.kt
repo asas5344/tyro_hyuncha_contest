@@ -33,6 +33,7 @@ import com.team.hyuncha.input.Direction
 import com.team.hyuncha.sim.Guidance
 import com.team.hyuncha.sim.OrientedRect
 import com.team.hyuncha.sim.ParkingMap
+import com.team.hyuncha.sim.ParkingMode
 import com.team.hyuncha.sim.ParkingSimulator
 import com.team.hyuncha.sim.SimStatus
 import com.team.hyuncha.sim.Vec2
@@ -81,6 +82,9 @@ private val GuideYellow = Color(0xFFFFD54F)
 private val GuideGreen = Color(0xFF5BD68E)
 private val TrailColor = Color(0xFFFFD54F)
 
+/** 한 화면에 보여줄 최대 가로 길이(m). 직각주차장(28m)은 거의 다 보이고, 평행주차 도로는 카메라가 따라감 */
+private const val VIEW_WIDTH_M = 26.0
+
 /** 월드 좌표(m) → 화면 좌표(px) 변환 */
 private class Projection(val scale: Float, val ox: Float, val oy: Float) {
     fun toScreen(p: Vec2) = Offset(ox + p.x.toFloat() * scale, oy + p.y.toFloat() * scale)
@@ -112,7 +116,11 @@ fun ParkingCanvas(
     val parkedStyles = remember(sim.map) {
         val rnd = Random(sim.map.parkedCars.hashCode())
         sim.map.parkedCars.map {
-            ParkedStyle(spriteIndex = rnd.nextInt(4), tint = ParkedTints.random(rnd), flipped = rnd.nextBoolean())
+            ParkedStyle(
+                spriteIndex = rnd.nextInt(4), tint = ParkedTints.random(rnd),
+                // 평행주차는 길가에 세운 차라 모두 차로 진행 방향(오른쪽)을 봄
+                flipped = sim.map.mode == ParkingMode.PERPENDICULAR && rnd.nextBoolean(),
+            )
         }
     }
 
@@ -120,15 +128,23 @@ fun ParkingCanvas(
         frame()  // 이 값을 읽어둬야 시뮬레이터가 움직일 때 다시 그려짐
         val map = sim.map
 
-        // 주차장 전체가 화면에 들어오도록 축척 계산 (여백 1m)
+        // 축척: 가로는 최대 VIEW_WIDTH_M까지만 보여줘서 긴 주차장(평행주차)에서도 차가 작아지지 않게 함 (여백 1m)
         val margin = 1.0
+        val viewWidthM = min(map.widthM, VIEW_WIDTH_M)
         val scale = min(
-            size.width / (map.widthM + margin * 2),
+            size.width / (viewWidthM + margin * 2),
             size.height / (map.heightM + margin * 2),
         ).toFloat()
+        // 화면보다 넓은 주차장이면 카메라가 차를 따라 좌우로 움직임 (끝에서는 멈춤)
+        val visibleM = size.width / scale
+        val cameraX = if (map.widthM + margin * 2 <= visibleM) {
+            map.widthM / 2
+        } else {
+            sim.bodyRect().center.x.coerceIn(visibleM / 2 - margin, map.widthM + margin - visibleM / 2)
+        }
         val proj = Projection(
             scale = scale,
-            ox = (size.width - map.widthM.toFloat() * scale) / 2,
+            ox = size.width / 2 - cameraX.toFloat() * scale,
             oy = (size.height - map.heightM.toFloat() * scale) / 2,
         )
         val pulse = 0.5f + 0.5f * sin(System.nanoTime() / 1e9 * 3.0).toFloat()  // 0~1, 목표 칸 깜빡임
@@ -225,11 +241,20 @@ private fun DrawScope.drawBays(map: ParkingMap, proj: Projection, textMeasurer: 
     }
 
     map.bays.forEachIndexed { i, bay ->
-        // 칸이 세로(π/2)로 놓여 있으므로 halfLength 방향이 y
-        val entrance = bay.center - Vec2.unit(bay.angle) * (bay.halfLength - 0.55)
-        val stopPos = bay.center + Vec2.unit(bay.angle) * (bay.halfLength - 0.55)
-        drawLabel(textMeasurer, "A${i + 1}", entrance, proj, sizeM = 0.42, color = LineWhite.copy(alpha = 0.55f))
-        drawOriented(OrientedRect(stopPos, halfLength = 0.09, halfWidth = 0.75, angle = bay.angle), proj, WheelStop)
+        when (map.mode) {
+            ParkingMode.PERPENDICULAR -> {
+                // 칸이 세로(π/2)로 놓여 있으므로 halfLength 방향이 y. 입구 쪽에 번호, 안쪽 끝에 바퀴 멈춤턱
+                val entrance = bay.center - Vec2.unit(bay.angle) * (bay.halfLength - 0.55)
+                val stopPos = bay.center + Vec2.unit(bay.angle) * (bay.halfLength - 0.55)
+                drawLabel(textMeasurer, "A${i + 1}", entrance, proj, sizeM = 0.42, color = LineWhite.copy(alpha = 0.55f))
+                drawOriented(OrientedRect(stopPos, halfLength = 0.09, halfWidth = 0.75, angle = bay.angle), proj, WheelStop)
+            }
+            ParkingMode.PARALLEL -> {
+                // 길가 칸: 멈춤턱 없음. 번호는 칸 왼쪽 위(차로 쪽) 구석에
+                val corner = bay.center + Vec2(-(bay.halfLength - 0.6), -(bay.halfWidth - 0.35))
+                drawLabel(textMeasurer, "B${i + 1}", corner, proj, sizeM = 0.42, color = LineWhite.copy(alpha = 0.55f))
+            }
+        }
     }
 }
 

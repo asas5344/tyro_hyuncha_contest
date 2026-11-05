@@ -71,6 +71,7 @@ import com.team.hyuncha.input.VehicleInput
 import com.team.hyuncha.safety.LockState
 import com.team.hyuncha.safety.SafetyLock
 import com.team.hyuncha.sim.ParkingMaps
+import com.team.hyuncha.sim.ParkingMode
 import com.team.hyuncha.sim.ParkingSimulator
 import com.team.hyuncha.sim.SimStatus
 import java.util.Locale
@@ -91,6 +92,7 @@ enum class InputMode(val label: String) {
 fun ParkingScreen(
     vehicle: Vehicle?, modifier: Modifier = Modifier,
     initialCar: CarSpec = CarPresets.GRANDEUR,
+    parkingMode: ParkingMode = ParkingMode.PERPENDICULAR,
 ) {
     val car = initialCar
     val currentCar by rememberUpdatedState(car)
@@ -101,7 +103,7 @@ fun ParkingScreen(
     }
     // 다시 할 때마다 round가 바뀌어 목표 칸·주차된 차가 새로 배치됨
     var round by remember { mutableIntStateOf(0) }
-    val sim = remember(car, round) { ParkingSimulator(car, ParkingMaps.randomPerpendicular()) }
+    val sim = remember(car, round, parkingMode) { ParkingSimulator(car, ParkingMaps.random(parkingMode)) }
     val frame = remember { mutableLongStateOf(0L) }
     val focus = remember { FocusRequester() }
 

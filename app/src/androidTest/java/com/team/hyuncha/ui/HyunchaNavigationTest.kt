@@ -51,6 +51,18 @@ class HyunchaNavigationTest {
         compose.onNodeWithTag("home_screen").assertIsDisplayed()
     }
 
+    @Test fun parallelParkingCanBeSelectedAndStarted() {
+        openApp()
+        compose.onNodeWithTag("mode_PARALLEL").performScrollTo().performClick(); settle()
+        compose.onNodeWithTag("start_practice").performScrollTo().performClick(); settle()
+        compose.onNodeWithText("평행주차 · 그랜저").assertIsDisplayed()
+        capture("parking_screen", "parking-parallel.png")
+        // 홈으로 돌아와도 고른 주차 방식이 유지됨
+        compose.onNodeWithTag("back_home").performClick(); settle()
+        compose.onNodeWithTag("start_practice").performScrollTo().performClick(); settle()
+        compose.onNodeWithText("평행주차 · 그랜저").assertIsDisplayed()
+    }
+
     @Test fun selectedCarIsPassedIntoExistingSimulator() {
         openApp()
         compose.onNodeWithTag("choose_car").performScrollTo().performClick(); settle()

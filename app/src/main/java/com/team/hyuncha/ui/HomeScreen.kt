@@ -22,10 +22,14 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.team.hyuncha.data.CarSpec
+import com.team.hyuncha.sim.ParkingMode
 import com.team.hyuncha.ui.theme.LocalAppTextScale
 
 @Composable
-fun HomeScreen(car: CarSpec, onChooseCar: () -> Unit, onSettings: () -> Unit, onStart: () -> Unit) {
+fun HomeScreen(
+    car: CarSpec, onChooseCar: () -> Unit, onSettings: () -> Unit, onStart: () -> Unit,
+    mode: ParkingMode = ParkingMode.PERPENDICULAR, onModeChange: (ParkingMode) -> Unit = {},
+) {
     val colors = MaterialTheme.colorScheme
     val scale = (LocalDensity.current.fontScale * LocalAppTextScale.current).coerceAtLeast(1f)
     BoxWithConstraints(Modifier.fillMaxSize().testTag("home_screen")) {
@@ -84,16 +88,26 @@ fun HomeScreen(car: CarSpec, onChooseCar: () -> Unit, onSettings: () -> Unit, on
                     }
                     Text("연습할 주차 방식", style = MaterialTheme.typography.titleMedium)
                     Spacer(Modifier.height(16.dp))
-                    // 실제 구현된 직각주차만 선택 가능하다.
+                    // 실제 구현된 T자(직각)·평행 주차만 선택 가능하다.
+                    val perpendicular: @Composable (Modifier) -> Unit = { m ->
+                        ParkingChoice("T자 주차", mode == ParkingMode.PERPENDICULAR, true,
+                            { onModeChange(ParkingMode.PERPENDICULAR) }, m.testTag("mode_PERPENDICULAR"))
+                    }
+                    val parallel: @Composable (Modifier) -> Unit = { m ->
+                        ParkingChoice("평행 주차", mode == ParkingMode.PARALLEL, true,
+                            { onModeChange(ParkingMode.PARALLEL) }, m.testTag("mode_PARALLEL"))
+                    }
                     if (wide && scale <= 1.25f) {
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                            ParkingChoice("T자 주차", true, Modifier.weight(1f))
-                            ParkingChoice("평행 주차", false, Modifier.weight(1f))
-                            ParkingChoice("사선 주차", false, Modifier.weight(1f))
+                            perpendicular(Modifier.weight(1f))
+                            parallel(Modifier.weight(1f))
+                            ParkingChoice("사선 주차", false, false, {}, Modifier.weight(1f))
                         }
                     } else {
-                        ParkingChoice("T자 주차", true, Modifier.fillMaxWidth())
-                        Text("평행·사선 주차는 준비 중이에요.", Modifier.padding(top = 12.dp),
+                        perpendicular(Modifier.fillMaxWidth())
+                        Spacer(Modifier.height(12.dp))
+                        parallel(Modifier.fillMaxWidth())
+                        Text("사선 주차는 준비 중이에요.", Modifier.padding(top = 12.dp),
                             color = colors.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium)
                     }
                     Text("P단을 유지하고, 전진·후진은 앱에서 선택하세요.", Modifier.padding(top = 18.dp),
@@ -150,11 +164,13 @@ private fun EngineStartButton(onStart: () -> Unit, modifier: Modifier) {
 }
 
 @Composable
-private fun ParkingChoice(title: String, selected: Boolean, modifier: Modifier) {
+private fun ParkingChoice(title: String, selected: Boolean, enabled: Boolean, onClick: () -> Unit, modifier: Modifier) {
     val c = MaterialTheme.colorScheme
-    Surface(modifier.heightIn(min = controlHeight(120.dp)), shape = RoundedCornerShape(24.dp),
+    Surface(onClick = onClick, enabled = enabled, modifier = modifier.heightIn(min = controlHeight(120.dp)),
+        shape = RoundedCornerShape(24.dp),
         color = if (selected) c.surfaceVariant else c.surface,
-        contentColor = if (selected) c.onSurface else c.onSurfaceVariant) {
+        contentColor = if (selected) c.onSurface else c.onSurfaceVariant,
+        border = if (selected) BorderStroke(2.dp, c.primary) else null) {
         Row(Modifier.padding(24.dp), verticalAlignment = Alignment.CenterVertically) {
             if (selected) {
                 OutlineIcon("check", Modifier.size(28.dp)); Spacer(Modifier.width(16.dp))
@@ -162,7 +178,12 @@ private fun ParkingChoice(title: String, selected: Boolean, modifier: Modifier) 
             Column {
                 Text(title, style = MaterialTheme.typography.titleMedium,
                     fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal)
-                Text(if (selected) "선택됨" else "준비 중", Modifier.padding(top = 6.dp),
+                Text(
+                    when {
+                        selected -> "선택됨"
+                        enabled -> "눌러서 선택"
+                        else -> "준비 중"
+                    }, Modifier.padding(top = 6.dp),
                     color = c.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
             }
         }

@@ -13,6 +13,7 @@ import androidx.compose.ui.unit.dp
 import com.team.hyuncha.data.AppTextSize
 import com.team.hyuncha.data.CarPresets
 import com.team.hyuncha.data.UiPreferences
+import com.team.hyuncha.sim.ParkingMode
 import com.team.hyuncha.ui.theme.HyunchaTheme
 import com.team.hyuncha.ui.theme.LocalAppTextScale
 
@@ -25,6 +26,8 @@ fun HyunchaApp(vehicle: Vehicle?, preferences: UiPreferences? = null) {
     var textSizeName by rememberSaveable { mutableStateOf(store.textSize.name) }
     var screen by rememberSaveable { mutableStateOf("home") }
     var choosingCar by rememberSaveable { mutableStateOf(false) }
+    var parkingModeName by rememberSaveable { mutableStateOf(ParkingMode.PERPENDICULAR.name) }
+    val parkingMode = ParkingMode.valueOf(parkingModeName)
     val textSize = AppTextSize.entries.firstOrNull { it.name == textSizeName } ?: AppTextSize.STANDARD
     val selectedCar = CarPresets.all.firstOrNull { it.name == carName } ?: CarPresets.GRANDEUR
     BackHandler(choosingCar || screen != "home") {
@@ -39,14 +42,15 @@ fun HyunchaApp(vehicle: Vehicle?, preferences: UiPreferences? = null) {
                         "parking" -> Column(Modifier.fillMaxSize().testTag("parking_screen")) {
                             AppButton("홈으로", onClick = { screen = "home" },
                                 modifier = Modifier.padding(16.dp).testTag("back_home"), icon = "back")
-                            ParkingScreen(vehicle, Modifier.weight(1f), initialCar = selectedCar)
+                            ParkingScreen(vehicle, Modifier.weight(1f), initialCar = selectedCar, parkingMode = parkingMode)
                         }
                         "settings" -> SettingsScreen(textSize, dark,
                             onTextSizeChange = { textSizeName = it.name; store.textSize = it },
                             onDarkThemeChange = { dark = it; store.darkTheme = it },
                             onBack = { screen = "home" })
                         else -> HomeScreen(selectedCar, onChooseCar = { choosingCar = true },
-                            onSettings = { screen = "settings" }, onStart = { screen = "parking" })
+                            onSettings = { screen = "settings" }, onStart = { screen = "parking" },
+                            mode = parkingMode, onModeChange = { parkingModeName = it.name })
                     }
                     if (choosingCar) CarSelectionSheet(selectedCar, onSelect = {
                         carName = it.name; store.carName = it.name; choosingCar = false
