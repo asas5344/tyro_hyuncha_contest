@@ -111,6 +111,9 @@ object ParkingMaps {
     private const val PAR_SLOT_W = 2.3
     const val PARALLEL_SLOT_COUNT = 5
 
+    /** 평행주차 출발 위치(뒷바퀴 축 y). 차로 가운데보다 주차 칸 쪽에 붙어서 출발 */
+    const val PARALLEL_START_Y = 4.6
+
     /**
      * 목표가 될 수 있는 평행주차 칸. 앞(오른쪽)에 차가 있어야 그 차 옆에 맞춰 세우고 후진을 시작할 수 있고,
      * 뒤(왼쪽)에도 차가 있어야 평행주차 연습이 되므로 양 끝 칸은 뺌
@@ -167,7 +170,7 @@ object ParkingMaps {
             parkedCars = parkedCars,
             slot = slotRect(targetIndex),
             lines = lines,
-            start = CarPose(x = 2.5, y = laneW / 2 + 0.5, heading = 0.0),
+            start = CarPose(x = 2.5, y = PARALLEL_START_Y, heading = 0.0),   // 주차된 차 옆으로 약 70cm 간격
             bays = (0 until PARALLEL_SLOT_COUNT).map(::slotRect),
         )
     }

@@ -39,6 +39,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableDoubleStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
@@ -75,9 +76,13 @@ import com.team.hyuncha.safety.SafetyLock
 import com.team.hyuncha.sim.ParkingMaps
 import com.team.hyuncha.sim.ParkingMode
 import com.team.hyuncha.sim.ParkingSimulator
+import com.team.hyuncha.sim.Coach
+import com.team.hyuncha.sim.CoachPlan
 import com.team.hyuncha.sim.SimEvent
 import com.team.hyuncha.sim.SimStatus
 import java.util.Locale
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import com.team.hyuncha.ui.theme.LocalAppTextScale
 
 /** 입력 방식: 화면 조작(개발·백업용) / 실제 차량(Pleos SDK) */
@@ -110,8 +115,14 @@ fun ParkingScreen(
     val frame = remember { mutableLongStateOf(0L) }
     val focus = remember { FocusRequester() }
 
-    // 다시 보여주기 상태 (새 판이 시작되면 초기화)
+    // 모범 주행: 판이 시작되면 뒤에서 미리 계산 (차량 화면에서 1초 안쪽)
+    val plan by produceState<CoachPlan?>(initialValue = null, sim) {
+        value = withContext(Dispatchers.Default) { Coach.solve(car, sim.map) }
+    }
+
+    // 다시 보기 상태 (새 판이 시작되면 초기화). 내 주행 또는 모범 주행을 재생
     var replaying by remember(sim) { mutableStateOf(false) }
+    var replayModel by remember(sim) { mutableStateOf(false) }
     val replayClock = remember(sim) { mutableDoubleStateOf(0.0) }
     var replayPlaying by remember(sim) { mutableStateOf(true) }
     var replaySpeed by remember(sim) { mutableDoubleStateOf(1.0) }
@@ -138,7 +149,8 @@ fun ParkingScreen(
                 if (replaying) {
                     // 다시 보여주기: 시뮬레이터는 멈추고 재생 시각만 앞으로
                     if (replayPlaying) {
-                        val end = sim.history.last().timeSec
+                        val source = if (replayModel) plan?.run ?: sim else sim
+                        val end = source.history.last().timeSec
                         replayClock.doubleValue = (replayClock.doubleValue + dt * replaySpeed).coerceAtMost(end)
                         if (replayClock.doubleValue >= end) replayPlaying = false
                     }
@@ -152,7 +164,8 @@ fun ParkingScreen(
     }
     LaunchedEffect(Unit) { focus.requestFocus() }
 
-    fun startReplay() {
+    fun startReplay(model: Boolean) {
+        replayModel = model && plan != null
         replayClock.doubleValue = 0.0
         replayPlaying = true
         replaying = true
@@ -196,7 +209,14 @@ fun ParkingScreen(
                     direction = { input.direction },
                     braking = { input.brakePressed },
                     modifier = Modifier.fillMaxSize(),
-                    replayTime = { if (replaying) replayClock.doubleValue else null },
+                    replay = {
+                        if (!replaying) null
+                        else {
+                            val model = plan?.run
+                            if (replayModel && model != null) ReplayView(model, replayClock.doubleValue, isModel = true, compare = sim)
+                            else ReplayView(sim, replayClock.doubleValue, isModel = false, compare = model)
+                        }
+                    },
                 )
                 SimHud(
                     sim = sim,
@@ -205,21 +225,28 @@ fun ParkingScreen(
                     waitingForBrake = input === vehicleInput && vehicleInput?.armed == false,
                     vehicleStatus = if (input === vehicleInput) vehicleInput?.statusText() else null,
                     replaying = replaying,
+                    plan = plan,
                     onRestart = ::restart,
-                    onReplay = ::startReplay,
+                    onReplay = { startReplay(model = false) },
+                    onShowModel = { startReplay(model = true) },
                     modifier = Modifier.fillMaxSize(),
                 )
                 if (replaying) {
+                    val model = plan
                     ReplayBar(
-                        sim = sim,
+                        source = if (replayModel && model != null) model.run else sim,
+                        plan = if (replayModel) model else null,
+                        canSwitch = model != null,
                         time = replayClock.doubleValue,
                         playing = replayPlaying,
                         speed = replaySpeed,
                         onPlayPause = {
                             // 끝까지 본 상태에서 재생을 누르면 처음부터
-                            if (!replayPlaying && replayClock.doubleValue >= sim.history.last().timeSec) replayClock.doubleValue = 0.0
+                            val source = if (replayModel) plan?.run ?: sim else sim
+                            if (!replayPlaying && replayClock.doubleValue >= source.history.last().timeSec) replayClock.doubleValue = 0.0
                             replayPlaying = !replayPlaying
                         },
+                        onSwitch = { startReplay(model = !replayModel) },
                         onSeek = { replayClock.doubleValue = it; replayPlaying = false },
                         onSpeedChange = { replaySpeed = it },
                         onClose = { replaying = false },
@@ -269,11 +296,17 @@ private fun SimHud(
     waitingForBrake: Boolean,
     vehicleStatus: String?,
     replaying: Boolean,
+    plan: CoachPlan?,
     onRestart: () -> Unit,
     onReplay: () -> Unit,
+    onShowModel: () -> Unit,
     modifier: Modifier,
 ) {
     frame()
+    // 결과가 나오면(또는 모범 주행 계산이 끝나면) 한 번만 피드백을 만듦
+    val feedback = remember(sim, sim.status, plan) {
+        if (sim.status == SimStatus.DRIVING) emptyList() else Coach.feedback(sim, plan)
+    }
     // 다시 보여주기 중에는 결과 카드·안내를 가리지 않도록 숨김
     if (replaying) return
     Box(modifier.padding(16.dp)) {
@@ -296,12 +329,12 @@ private fun SimHud(
             lock.message != null -> NoticeCard(lock.message, Modifier.align(Alignment.Center))
             sim.status == SimStatus.COLLIDED -> ResultCard(
                 title = "부딪혔어요",
-                lines = listOfNotNull(
-                    sim.collision?.message,
-                    "다시 보여주기로 어디서 닿았는지 확인해 보세요.",
-                ),
+                lines = listOfNotNull(sim.collision?.message),
+                feedback = feedback,
+                modelReady = plan != null,
                 onRestart = onRestart,
                 onReplay = onReplay,
+                onShowModel = onShowModel,
                 modifier = Modifier.align(Alignment.Center),
             )
             sim.status == SimStatus.PARKED -> sim.result?.let { r ->
@@ -313,8 +346,11 @@ private fun SimHud(
                         "전후진 전환 ${r.directionChanges}회",
                         "걸린 시간 ${fmt(r.elapsedSec, 0)}초",
                     ),
+                    feedback = feedback,
+                    modelReady = plan != null,
                     onRestart = onRestart,
                     onReplay = onReplay,
+                    onShowModel = onShowModel,
                     modifier = Modifier.align(Alignment.Center),
                 )
             }
@@ -403,17 +439,39 @@ private fun NoticeCard(text: String, modifier: Modifier) {
 }
 
 @Composable
-private fun ResultCard(title: String, lines: List<String>, onRestart: () -> Unit, onReplay: () -> Unit, modifier: Modifier) {
+private fun ResultCard(
+    title: String,
+    lines: List<String>,
+    feedback: List<String>,
+    modelReady: Boolean,
+    onRestart: () -> Unit,
+    onReplay: () -> Unit,
+    onShowModel: () -> Unit,
+    modifier: Modifier,
+) {
     Card(modifier.widthIn(min = 420.dp, max = 640.dp)) {
         Column(Modifier.padding(28.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             Text(title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
             Spacer(Modifier.height(12.dp))
             lines.forEach { Text(it, textAlign = TextAlign.Center) }
+            // 코치 피드백: 무엇이 문제였는지, 어떻게 고치면 되는지
+            if (feedback.isNotEmpty()) {
+                Spacer(Modifier.height(16.dp))
+                Surface(color = MaterialTheme.colorScheme.surfaceVariant, shape = RoundedCornerShape(12.dp)) {
+                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text("코치 피드백", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                        feedback.forEach { Text("· $it") }
+                    }
+                }
+            }
             Spacer(Modifier.height(20.dp))
             // 버튼 글자가 두 줄로 꺾이지 않게 한 줄로 고정
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                OutlinedButton(onClick = onReplay) { Text("다시 보여주기", maxLines = 1, softWrap = false) }
-                Button(onClick = onRestart) { Text("다시 하기", maxLines = 1, softWrap = false) }
+                Button(onClick = onShowModel, enabled = modelReady) {
+                    Text(if (modelReady) "모범 주행 보기" else "모범 주행 계산 중…", maxLines = 1, softWrap = false)
+                }
+                OutlinedButton(onClick = onReplay) { Text("내 주행 보기", maxLines = 1, softWrap = false) }
+                OutlinedButton(onClick = onRestart) { Text("다시 하기", maxLines = 1, softWrap = false) }
             }
         }
     }
@@ -425,7 +483,9 @@ private fun ResultCard(title: String, lines: List<String>, onRestart: () -> Unit
  */
 @Composable
 private fun ReplayBar(
-    sim: ParkingSimulator,
+    source: ParkingSimulator,
+    plan: CoachPlan?,
+    canSwitch: Boolean,
     time: Double,
     playing: Boolean,
     speed: Double,
@@ -433,11 +493,13 @@ private fun ReplayBar(
     onSeek: (Double) -> Unit,
     onSpeedChange: (Double) -> Unit,
     onClose: () -> Unit,
+    onSwitch: () -> Unit,
     modifier: Modifier,
 ) {
-    val end = sim.history.last().timeSec.coerceAtLeast(0.1)
-    val lastEvent = sim.events.lastOrNull { it.timeSec <= time }
-    val caption = when (lastEvent) {
+    val end = source.history.last().timeSec.coerceAtLeast(0.1)
+    val lastEvent = source.events.lastOrNull { it.timeSec <= time }
+    // 모범 주행이면 지금 단계 설명, 내 주행이면 지난 사건
+    val caption = if (plan != null) "모범 주행 · " + (plan.stepAt(time)?.text ?: "") else when (lastEvent) {
         is SimEvent.DirectionChanged ->
             "${lastEvent.count}번째 전환: ${if (lastEvent.to == Direction.REVERSE) "후진" else "전진"}으로 바꿨어요"
         is SimEvent.Collided -> "여기서 ${lastEvent.message}"
@@ -449,7 +511,11 @@ private fun ReplayBar(
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(
                 caption,
-                color = if (lastEvent is SimEvent.Collided) Color(0xFFFF8A80) else Color.White,
+                color = when {
+                    plan != null -> Color(0xFF8EE6B1)
+                    lastEvent is SimEvent.Collided -> Color(0xFFFF8A80)
+                    else -> Color.White
+                },
                 fontSize = textSize, fontWeight = FontWeight.Bold,
             )
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -466,6 +532,11 @@ private fun ReplayBar(
                     modifier = Modifier.weight(1f),
                 )
                 Text("${clock(time)} / ${clock(end)}", color = Color.White, fontSize = textSize)
+                if (canSwitch) {
+                    OutlinedButton(onClick = onSwitch, modifier = Modifier.height(56.dp)) {
+                        Text(if (plan != null) "내 주행 보기" else "모범 주행 보기", color = Color.White, fontSize = textSize, maxLines = 1, softWrap = false)
+                    }
+                }
                 OutlinedButton(onClick = onClose, modifier = Modifier.height(56.dp)) {
                     Text("닫기", color = Color.White, fontSize = textSize)
                 }

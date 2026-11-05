@@ -83,6 +83,14 @@ private val GuideYellow = Color(0xFFFFD54F)
 private val GuideGreen = Color(0xFF5BD68E)
 private val TrailColor = Color(0xFFFFD54F)
 private val MarkerBlue = Color(0xFF2F7BEA)
+private val ModelGreen = Color(0xFF5BD68E)
+
+/**
+ * 다시 보기에서 그릴 것.
+ * @param source 재생하는 주행 (내 주행이면 지금 시뮬레이터, 모범 주행이면 코치가 돌린 시뮬레이터)
+ * @param compare 같이 옅게 보여줄 다른 주행 (비교용)
+ */
+class ReplayView(val source: ParkingSimulator, val timeSec: Double, val isModel: Boolean, val compare: ParkingSimulator?)
 
 /** 한 화면에 보여줄 최대 가로 길이(m). 직각주차장(28m)은 거의 다 보이고, 평행주차 도로는 카메라가 따라감 */
 private const val VIEW_WIDTH_M = 26.0
@@ -101,7 +109,7 @@ private class Speckle(val pos: Vec2, val radiusM: Float, val color: Color)
  * @param frame 매 프레임 바뀌는 값. draw 안에서 읽어야 프레임마다 다시 그려짐
  * @param direction 지금 고른 진행 방향 (예상 진행선·후진등에 사용)
  * @param braking 브레이크를 밟고 있는지 (브레이크등에 사용)
- * @param replayTime 다시 보여주기 중이면 재생 시각(초), 아니면 null (지금 상태를 그림)
+ * @param replay 다시 보기 중이면 무엇을 몇 초째 재생하는지, 아니면 null (지금 상태를 그림)
  */
 @Composable
 fun ParkingCanvas(
@@ -110,7 +118,7 @@ fun ParkingCanvas(
     direction: () -> Direction,
     braking: () -> Boolean,
     modifier: Modifier = Modifier,
-    replayTime: () -> Double? = { null },
+    replay: () -> ReplayView? = { null },
 ) {
     val textMeasurer = rememberTextMeasurer()
     val speckles = remember(sim.map) { makeSpeckles(sim.map) }
@@ -132,16 +140,18 @@ fun ParkingCanvas(
         frame()  // 이 값을 읽어둬야 시뮬레이터가 움직일 때 다시 그려짐
         val map = sim.map
 
-        // 그릴 차 상태: 평소에는 지금 상태, 다시 보여주기 중에는 그 시각의 기록
-        val rt = replayTime()
-        val shown = rt?.let { sim.frameAt(it) }
+        // 그릴 차 상태: 평소에는 지금 상태, 다시 보기 중에는 재생하는 주행(내 주행 또는 모범 주행)의 그 시각 기록
+        val rv = replay()
+        val src = rv?.source ?: sim
+        val rt = rv?.timeSec
+        val shown = rt?.let { src.frameAt(it) }
         val pose = shown?.pose ?: sim.pose
         val wheelAngle = shown?.wheelAngleDeg ?: sim.wheelAngleDeg
         val dirNow = shown?.direction ?: direction()
         val brakingNow = shown?.braking ?: braking()
-        val atEnd = rt == null || rt >= sim.history.last().timeSec
-        val crashedNow = sim.status == SimStatus.COLLIDED && atEnd
-        val body = sim.bodyRect(pose)
+        val atEnd = rt == null || rt >= src.history.last().timeSec
+        val crashedNow = src.status == SimStatus.COLLIDED && atEnd
+        val body = src.bodyRect(pose)
 
         // 축척: 가로는 최대 VIEW_WIDTH_M까지만 보여줘서 긴 주차장(평행주차)에서도 차가 작아지지 않게 함 (여백 1m)
         val margin = 1.0
@@ -182,13 +192,17 @@ fun ParkingCanvas(
             )
         }
 
-        if (rt == null) {
+        if (rv == null || rt == null) {
             // 지나온 경로 (옅게)
             drawPoseLine(sim.trail, proj, TrailColor.copy(alpha = 0.3f), 2f)
         } else {
-            // 다시 보여주기: 전체 경로는 옅게, 지금까지 온 길은 진하게, 전환·충돌 지점 표시
-            drawPoseLine(sim.history.map { it.pose }, proj, TrailColor.copy(alpha = 0.25f), proj.m(0.06))
-            drawPoseLine(sim.history.takeWhile { it.timeSec <= rt }.map { it.pose }, proj, TrailColor, proj.m(0.1))
+            // 다시 보기: 비교할 다른 주행은 옅게, 재생 중인 주행은 전체를 옅게 + 지금까지 온 길을 진하게
+            // 색: 내 주행 = 노랑, 모범 주행 = 초록
+            val srcColor = if (rv.isModel) ModelGreen else TrailColor
+            val otherColor = if (rv.isModel) TrailColor else ModelGreen
+            rv.compare?.let { other -> drawPoseLine(other.history.map { it.pose }, proj, otherColor.copy(alpha = 0.35f), proj.m(0.06)) }
+            drawPoseLine(src.history.map { it.pose }, proj, srcColor.copy(alpha = 0.25f), proj.m(0.06))
+            drawPoseLine(src.history.takeWhile { it.timeSec <= rt }.map { it.pose }, proj, srcColor, proj.m(0.1))
         }
 
         if (sim.status == SimStatus.DRIVING || (rt != null && !atEnd)) {
@@ -214,7 +228,7 @@ fun ParkingCanvas(
         }
 
         // 전환·충돌 표시는 차가 지나가도 가려지지 않게 맨 위에
-        if (rt != null) drawEventMarkers(sim.events, rt, proj, textMeasurer)
+        if (rt != null) drawEventMarkers(src.events, rt, proj, textMeasurer)
     }
 }
 
