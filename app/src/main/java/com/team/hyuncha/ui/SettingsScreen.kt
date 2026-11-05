@@ -14,11 +14,14 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.unit.dp
 import com.team.hyuncha.data.AppTextSize
+import com.team.hyuncha.input.SteeringUnit
 
 @Composable
 fun SettingsScreen(textSize: AppTextSize, dark: Boolean,
                    onTextSizeChange: (AppTextSize) -> Unit,
-                   onDarkThemeChange: (Boolean) -> Unit, onBack: () -> Unit) {
+                   onDarkThemeChange: (Boolean) -> Unit, onBack: () -> Unit,
+                   steeringUnit: SteeringUnit = SteeringUnit.STEERING_WHEEL, invertSteering: Boolean = true,
+                   onSteeringUnitChange: (SteeringUnit) -> Unit = {}, onInvertSteeringChange: (Boolean) -> Unit = {}) {
     val c = MaterialTheme.colorScheme
     Column(Modifier.fillMaxSize().testTag("settings_screen").verticalScroll(rememberScrollState()).padding(40.dp),
         verticalArrangement = Arrangement.spacedBy(24.dp)) {
@@ -45,6 +48,26 @@ fun SettingsScreen(textSize: AppTextSize, dark: Boolean,
         Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
             SettingChoice("어둡게", dark, Modifier.weight(1f).testTag("theme_dark")) { onDarkThemeChange(true) }
             SettingChoice("밝게", !dark, Modifier.weight(1f).testTag("theme_light")) { onDarkThemeChange(false) }
+        }
+
+        // 실차 점검용: SDK 조향값을 어떻게 읽을지. 에뮬레이터 기준 기본값이 실제 차와 다를 때만 바꿈
+        Spacer(Modifier.height(8.dp))
+        Text("실제 차량 조향값 (실차 점검용)", style = MaterialTheme.typography.headlineMedium)
+        Text("기본값은 에뮬레이터에서 확인한 값이에요. 실제 차에서 핸들을 오른쪽으로 돌렸는데 화면 속 바퀴가 " +
+            "왼쪽으로 꺾이면 '좌우 반전'을, 조금만 돌려도 바퀴가 끝까지 꺾이면 '앞바퀴 각도'를 바꿔 보세요.",
+            color = c.onSurfaceVariant, style = MaterialTheme.typography.bodyLarge)
+        Text("SDK 값의 단위", style = MaterialTheme.typography.titleLarge)
+        Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+            SteeringUnit.entries.forEach { unit ->
+                SettingChoice(unit.label, unit == steeringUnit, Modifier.weight(1f).testTag("steer_unit_${unit.name}")) {
+                    onSteeringUnitChange(unit)
+                }
+            }
+        }
+        Text("좌우 방향", style = MaterialTheme.typography.titleLarge)
+        Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+            SettingChoice("좌우 반전 (에뮬레이터 기본)", invertSteering, Modifier.weight(1f).testTag("steer_invert_on")) { onInvertSteeringChange(true) }
+            SettingChoice("그대로", !invertSteering, Modifier.weight(1f).testTag("steer_invert_off")) { onInvertSteeringChange(false) }
         }
     }
 }

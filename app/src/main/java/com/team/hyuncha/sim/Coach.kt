@@ -37,6 +37,9 @@ class CoachPlan(
 object Coach {
     private const val DT = 1.0 / 60
 
+    /** 0..last를 가운데부터 바깥으로 (가운데 값이 성공할 가능성이 커서 먼저 시도) */
+    private fun centerOut(last: Int): List<Int> = (0..last).sortedBy { kotlin.math.abs(it - last / 2) }
+
     fun solve(car: CarSpec, map: ParkingMap): CoachPlan? = when (map.mode) {
         ParkingMode.PERPENDICULAR -> best(perpendicularCandidates(car, map))
         ParkingMode.PARALLEL -> best(parallelCandidates(car, map))
@@ -58,7 +61,7 @@ object Coach {
 
     private fun perpendicularCandidates(car: CarSpec, map: ParkingMap) = sequence {
         for (frac in listOf(1.0, 0.85)) {
-            for (k in 0..80) {
+            for (k in centerOut(80)) {
                 yield(tryPerpendicular(car, map, stopX = map.slot.center.x - 1.5 + k * 0.1, steerFrac = frac))
             }
         }
@@ -89,7 +92,7 @@ object Coach {
         val slotRight = map.slot.center.x + map.slot.halfLength
         for (angle in listOf(45.0, 40.0, 50.0, 35.0, 55.0)) {
             for (straight in listOf(0.0, 0.4, 0.8, 1.2)) {
-                for (k in 0..16) {
+                for (k in centerOut(16)) {
                     yield(tryParallel(car, map, stopX = slotRight - 1.0 + k * 0.25, leanDeg = angle, straight = straight))
                 }
             }
@@ -136,7 +139,7 @@ object Coach {
         // 칸 입구(통로 경계와 만나는 곳)보다 앞에서 꺾기 시작
         val entranceX = map.slot.center.x - map.slot.halfLength * kotlin.math.cos(map.slot.angle)
         for (frac in listOf(1.0, 0.85, 0.7)) {
-            for (k in 0..90) {
+            for (k in centerOut(90)) {
                 yield(tryDiagonal(car, map, turnX = entranceX - 7.0 + k * 0.1, steerFrac = frac))
             }
         }

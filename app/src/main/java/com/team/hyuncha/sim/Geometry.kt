@@ -74,6 +74,11 @@ data class OrientedRect(
      * 두 사각형의 변 방향 4개 축 중 하나라도 투영이 안 겹치면 서로 떨어져 있음.
      */
     fun intersects(other: OrientedRect): Boolean {
+        // 빠른 사전 검사: 두 사각형을 감싸는 원끼리도 안 닿으면 계산할 필요 없음 (멀리 있는 장애물 대부분이 여기서 걸러짐)
+        val reach = kotlin.math.hypot(halfLength, halfWidth) + kotlin.math.hypot(other.halfLength, other.halfWidth)
+        val dx = center.x - other.center.x
+        val dy = center.y - other.center.y
+        if (dx * dx + dy * dy > reach * reach) return false
         val mine = corners()
         val theirs = other.corners()
         for (axis in listOf(axisL, axisW, other.axisL, other.axisW)) {

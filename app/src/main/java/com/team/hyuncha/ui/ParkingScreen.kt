@@ -1,6 +1,7 @@
 package com.team.hyuncha.ui
 
 import ai.pleos.playground.vehicle.Vehicle
+import android.util.Log
 import ai.pleos.playground.vehicle.constant.control.VehicleGear
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -35,6 +36,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableDoubleStateOf
 import androidx.compose.runtime.mutableIntStateOf
@@ -101,6 +103,8 @@ fun ParkingScreen(
     vehicle: Vehicle?, modifier: Modifier = Modifier,
     initialCar: CarSpec = CarPresets.GRANDEUR,
     parkingMode: ParkingMode = ParkingMode.PERPENDICULAR,
+    steeringUnit: SteeringUnit = SteeringUnit.STEERING_WHEEL,
+    invertSteering: Boolean = true,
 ) {
     val car = initialCar
     val currentCar by rememberUpdatedState(car)
@@ -109,6 +113,12 @@ fun ParkingScreen(
     val vehicleInput = remember(vehicle) {
         vehicle?.let { VehicleInput(it) { currentCar.steeringRatio } }
     }
+    // 설정 화면의 조향값 해석을 차량 입력에 적용
+    SideEffect {
+        vehicleInput?.steeringUnit = steeringUnit
+        vehicleInput?.invertSteering = invertSteering
+    }
+
     // 다시 할 때마다 round가 바뀌어 목표 칸·주차된 차가 새로 배치됨
     var round by remember { mutableIntStateOf(0) }
     val sim = remember(car, round, parkingMode) { ParkingSimulator(car, ParkingMaps.random(parkingMode)) }
@@ -117,7 +127,13 @@ fun ParkingScreen(
 
     // 모범 주행: 판이 시작되면 뒤에서 미리 계산 (차량 화면에서 1초 안쪽)
     val plan by produceState<CoachPlan?>(initialValue = null, sim) {
-        value = withContext(Dispatchers.Default) { Coach.solve(car, sim.map) }
+        value = withContext(Dispatchers.Default) {
+            val started = System.nanoTime()
+            Coach.solve(car, sim.map).also {
+                // 차량 화면에서 얼마나 걸리는지 확인용 (Logcat에서 "CoachTiming"으로 검색)
+                Log.d("CoachTiming", "${sim.map.mode} ${car.name}: ${(System.nanoTime() - started) / 1_000_000}ms, 찾음=${it != null}")
+            }
+        }
     }
 
     // 다시 보기 상태 (새 판이 시작되면 초기화). 내 주행 또는 모범 주행을 재생

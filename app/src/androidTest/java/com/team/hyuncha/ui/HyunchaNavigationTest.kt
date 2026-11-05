@@ -71,6 +71,19 @@ class HyunchaNavigationTest {
         capture("parking_screen", "parking-diagonal.png")
     }
 
+    @Test fun steeringSettingsAreStored() {
+        // 설정 화면 아래쪽으로 스크롤해야 하는데, 스크롤은 애니메이션이라 시계가 멈춰 있으면 끝나지 않음.
+        // 이 테스트는 주차 화면(계속 움직이는 화면)을 열지 않으므로 시계를 자동으로 진행시킴
+        compose.mainClock.autoAdvance = true
+        openApp()
+        compose.onNodeWithTag("open_settings").performClick(); settle()
+        compose.onNodeWithTag("steer_unit_FRONT_WHEEL").performScrollTo().performClick(); settle()
+        compose.onNodeWithTag("steer_invert_off").performScrollTo().performClick(); settle()
+        val saved = UiPreferences(context, preferenceName)
+        assertEquals(com.team.hyuncha.input.SteeringUnit.FRONT_WHEEL, saved.steeringUnit)
+        assertFalse(saved.invertSteering)
+    }
+
     @Test fun selectedCarIsPassedIntoExistingSimulator() {
         openApp()
         compose.onNodeWithTag("choose_car").performScrollTo().performClick(); settle()
