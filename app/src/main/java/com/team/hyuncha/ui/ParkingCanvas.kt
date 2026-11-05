@@ -35,6 +35,7 @@ import com.team.hyuncha.sim.OrientedRect
 import com.team.hyuncha.sim.ParkingMap
 import com.team.hyuncha.sim.ParkingMode
 import com.team.hyuncha.sim.ParkingSimulator
+import com.team.hyuncha.sim.SimEvent
 import com.team.hyuncha.sim.SimStatus
 import com.team.hyuncha.sim.Vec2
 import kotlin.math.min
@@ -81,6 +82,7 @@ private val GuideRed = Color(0xFFFF5A52)
 private val GuideYellow = Color(0xFFFFD54F)
 private val GuideGreen = Color(0xFF5BD68E)
 private val TrailColor = Color(0xFFFFD54F)
+private val MarkerBlue = Color(0xFF2F7BEA)
 
 /** 한 화면에 보여줄 최대 가로 길이(m). 직각주차장(28m)은 거의 다 보이고, 평행주차 도로는 카메라가 따라감 */
 private const val VIEW_WIDTH_M = 26.0
@@ -99,6 +101,7 @@ private class Speckle(val pos: Vec2, val radiusM: Float, val color: Color)
  * @param frame 매 프레임 바뀌는 값. draw 안에서 읽어야 프레임마다 다시 그려짐
  * @param direction 지금 고른 진행 방향 (예상 진행선·후진등에 사용)
  * @param braking 브레이크를 밟고 있는지 (브레이크등에 사용)
+ * @param replayTime 다시 보여주기 중이면 재생 시각(초), 아니면 null (지금 상태를 그림)
  */
 @Composable
 fun ParkingCanvas(
@@ -107,6 +110,7 @@ fun ParkingCanvas(
     direction: () -> Direction,
     braking: () -> Boolean,
     modifier: Modifier = Modifier,
+    replayTime: () -> Double? = { null },
 ) {
     val textMeasurer = rememberTextMeasurer()
     val speckles = remember(sim.map) { makeSpeckles(sim.map) }
@@ -128,6 +132,17 @@ fun ParkingCanvas(
         frame()  // 이 값을 읽어둬야 시뮬레이터가 움직일 때 다시 그려짐
         val map = sim.map
 
+        // 그릴 차 상태: 평소에는 지금 상태, 다시 보여주기 중에는 그 시각의 기록
+        val rt = replayTime()
+        val shown = rt?.let { sim.frameAt(it) }
+        val pose = shown?.pose ?: sim.pose
+        val wheelAngle = shown?.wheelAngleDeg ?: sim.wheelAngleDeg
+        val dirNow = shown?.direction ?: direction()
+        val brakingNow = shown?.braking ?: braking()
+        val atEnd = rt == null || rt >= sim.history.last().timeSec
+        val crashedNow = sim.status == SimStatus.COLLIDED && atEnd
+        val body = sim.bodyRect(pose)
+
         // 축척: 가로는 최대 VIEW_WIDTH_M까지만 보여줘서 긴 주차장(평행주차)에서도 차가 작아지지 않게 함 (여백 1m)
         val margin = 1.0
         val viewWidthM = min(map.widthM, VIEW_WIDTH_M)
@@ -140,7 +155,7 @@ fun ParkingCanvas(
         val cameraX = if (map.widthM + margin * 2 <= visibleM) {
             map.widthM / 2
         } else {
-            sim.bodyRect().center.x.coerceIn(visibleM / 2 - margin, map.widthM + margin - visibleM / 2)
+            body.center.x.coerceIn(visibleM / 2 - margin, map.widthM + margin - visibleM / 2)
         }
         val proj = Projection(
             scale = scale,
@@ -167,39 +182,39 @@ fun ParkingCanvas(
             )
         }
 
-        // 지나온 경로 (옅게)
-        if (sim.trail.size >= 2) {
-            val path = Path()
-            sim.trail.forEachIndexed { i, p ->
-                val o = proj.toScreen(Vec2(p.x, p.y))
-                if (i == 0) path.moveTo(o.x, o.y) else path.lineTo(o.x, o.y)
-            }
-            drawPath(path, TrailColor.copy(alpha = 0.3f), style = Stroke(width = 2f))
+        if (rt == null) {
+            // 지나온 경로 (옅게)
+            drawPoseLine(sim.trail, proj, TrailColor.copy(alpha = 0.3f), 2f)
+        } else {
+            // 다시 보여주기: 전체 경로는 옅게, 지금까지 온 길은 진하게, 전환·충돌 지점 표시
+            drawPoseLine(sim.history.map { it.pose }, proj, TrailColor.copy(alpha = 0.25f), proj.m(0.06))
+            drawPoseLine(sim.history.takeWhile { it.timeSec <= rt }.map { it.pose }, proj, TrailColor, proj.m(0.1))
         }
 
-        if (sim.status == SimStatus.DRIVING) {
-            drawGuideLines(sim, direction(), proj)
+        if (sim.status == SimStatus.DRIVING || (rt != null && !atEnd)) {
+            drawGuideLines(sim, pose, wheelAngle, dirNow, proj)
         }
 
-        val body = sim.bodyRect()
-        val reversing = direction() == Direction.REVERSE
         drawCarTopDown(
-            center = body.center, heading = sim.pose.heading,
+            center = body.center, heading = pose.heading,
             lengthM = sim.car.lengthM, widthM = sim.car.widthM,
-            bodyColor = if (sim.status == SimStatus.COLLIDED) CrashedRed else MyCarBody,
+            bodyColor = if (crashedNow) CrashedRed else MyCarBody,
             proj = proj,
             sprite = sprites.forCar(sim.car),
-            colorFilter = if (sim.status == SimStatus.COLLIDED) CrashedTint else MyCarWhite,
-            lights = CarLights(brake = braking(), reverse = reversing),
+            colorFilter = if (crashedNow) CrashedTint else MyCarWhite,
+            lights = CarLights(brake = brakingNow, reverse = dirNow == Direction.REVERSE),
             frontWheels = FrontWheels(
                 axleOffsetM = sim.car.wheelBaseM - (sim.car.lengthM / 2 - sim.car.rearOverhangM),
-                angleDeg = sim.wheelAngleDeg,
+                angleDeg = wheelAngle,
             ),
         )
 
-        if (sim.status != SimStatus.PARKED) {
+        if (sim.status != SimStatus.PARKED || !atEnd) {
             drawSensors(Guidance.readSensors(body, map.obstacles), proj)
         }
+
+        // 전환·충돌 표시는 차가 지나가도 가려지지 않게 맨 위에
+        if (rt != null) drawEventMarkers(sim.events, rt, proj, textMeasurer)
     }
 }
 
@@ -258,6 +273,38 @@ private fun DrawScope.drawBays(map: ParkingMap, proj: Projection, textMeasurer: 
     }
 }
 
+/** 차가 지나간 길 (뒷바퀴 축 위치를 이은 선) */
+private fun DrawScope.drawPoseLine(poses: List<com.team.hyuncha.sim.CarPose>, proj: Projection, color: Color, width: Float) {
+    if (poses.size < 2) return
+    val path = Path()
+    poses.forEachIndexed { i, p ->
+        val o = proj.toScreen(Vec2(p.x, p.y))
+        if (i == 0) path.moveTo(o.x, o.y) else path.lineTo(o.x, o.y)
+    }
+    drawPath(path, color, style = Stroke(width = width, cap = StrokeCap.Round, join = StrokeJoin.Round))
+}
+
+/** 다시 보여주기의 사건 표시: 파란 원 = 전진·후진 전환(번호), 빨간 원 = 부딪힌 곳. 아직 안 지난 사건은 흐리게 */
+private fun DrawScope.drawEventMarkers(events: List<SimEvent>, timeSec: Double, proj: Projection, textMeasurer: TextMeasurer) {
+    events.forEach { e ->
+        val passed = e.timeSec <= timeSec
+        val alpha = if (passed) 1f else 0.35f
+        val c = proj.toScreen(e.position)
+        when (e) {
+            is SimEvent.DirectionChanged -> {
+                drawCircle(MarkerBlue.copy(alpha = alpha), radius = proj.m(0.38), center = c)
+                drawCircle(Color.White.copy(alpha = alpha), radius = proj.m(0.38), center = c, style = Stroke(width = proj.m(0.06)))
+                drawLabel(textMeasurer, "${e.count}", e.position, proj, sizeM = 0.42, color = Color.White.copy(alpha = alpha))
+            }
+            is SimEvent.Collided -> {
+                drawCircle(GuideRed.copy(alpha = 0.35f * alpha), radius = proj.m(0.75), center = c)
+                drawCircle(GuideRed.copy(alpha = alpha), radius = proj.m(0.38), center = c)
+                drawLabel(textMeasurer, "!", e.position, proj, sizeM = 0.5, color = Color.White.copy(alpha = alpha))
+            }
+        }
+    }
+}
+
 /** 통로 바닥의 진행 방향 화살표 */
 private fun DrawScope.drawAisleArrows(map: ParkingMap, proj: Projection) {
     val y = map.start.y
@@ -278,8 +325,8 @@ private fun DrawScope.drawAisleArrows(map: ParkingMap, proj: Projection) {
  * 예상 진행선: 지금 바퀴 각도 그대로 가면 범퍼 양 끝이 지나갈 길.
  * 실제 후방 카메라처럼 가까운 쪽부터 빨강(1m) → 노랑(2m) → 초록.
  */
-private fun DrawScope.drawGuideLines(sim: ParkingSimulator, direction: Direction, proj: Projection) {
-    val points = Guidance.predictPath(sim.car, sim.pose, sim.wheelAngleDeg, direction)
+private fun DrawScope.drawGuideLines(sim: ParkingSimulator, pose: com.team.hyuncha.sim.CarPose, wheelAngleDeg: Double, direction: Direction, proj: Projection) {
+    val points = Guidance.predictPath(sim.car, pose, wheelAngleDeg, direction)
     if (points.size < 2) return
 
     // 차 폭만큼의 띠를 옅게 칠함

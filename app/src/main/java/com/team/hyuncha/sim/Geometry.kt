@@ -43,6 +43,21 @@ data class OrientedRect(
             abs(d dot axisW) <= halfWidth + tolerance
     }
 
+    /** p를 이 사각형 기준 좌표(길이 방향, 폭 방향)로 바꿈 */
+    fun toLocal(p: Vec2): Pair<Double, Double> {
+        val d = p - center
+        return (d dot axisL) to (d dot axisW)
+    }
+
+    /** p가 안쪽으로 얼마나 깊이 들어와 있는지(m). 바깥이면 음수(떨어진 거리) */
+    fun depthOf(p: Vec2): Double {
+        val (l, w) = toLocal(p)
+        val inL = halfLength - abs(l)
+        val inW = halfWidth - abs(w)
+        return if (inL >= 0 && inW >= 0) minOf(inL, inW)
+        else -kotlin.math.hypot(maxOf(-inL, 0.0), maxOf(-inW, 0.0))
+    }
+
     /** 사각형 위(테두리 포함)에서 p에 가장 가까운 점. p가 안에 있으면 p 자신 */
     fun closestPoint(p: Vec2): Vec2 {
         val d = p - center
