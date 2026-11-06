@@ -44,7 +44,7 @@ import kotlin.math.sin
 import kotlin.random.Random
 
 // 주차장
-private val Backdrop = Color(0xFF1E2024)
+internal val Backdrop = Color(0xFF1E2024)
 private val Asphalt = Color(0xFF34373C)
 private val WallConcrete = Color(0xFF55595F)
 private val CurbYellow = Color(0xFFE0B23A)
@@ -64,7 +64,7 @@ private val ParkedColors = listOf(
 )
 // 은색 이미지에 곱해서 색을 입힘 (흰색 = 원래 은색 그대로). 유리·외곽선은 어두워서 거의 안 바뀜
 // 주차된 차 색 후보 (내 차가 흰색이라 흰색·밝은 은색은 뺌)
-private val ParkedTints = listOf(
+internal val ParkedTints = listOf(
     Color(0xFF4A4E56), Color(0xFF2E3036), Color(0xFFD9C7A3), Color(0xFFC25555),
     Color(0xFF5D7FC4), Color(0xFF9BA1AA), Color(0xFF5E8A6E),
 )
@@ -75,7 +75,7 @@ private val MyCarWhite = ColorFilter.colorMatrix(
 private val CrashedTint = ColorFilter.tint(Color(0xFFFF7A7A), BlendMode.Modulate)
 
 /** 주차된 차 한 대의 모습: 차종 이미지, 색, 앞뒤 방향 */
-private class ParkedStyle(val spriteIndex: Int, val tint: Color, val flipped: Boolean)
+internal class ParkedStyle(val spriteIndex: Int, val tint: Color, val flipped: Boolean)
 
 // 안내
 private val GuideRed = Color(0xFFFF5A52)
@@ -96,13 +96,13 @@ class ReplayView(val source: ParkingSimulator, val timeSec: Double, val isModel:
 private const val VIEW_WIDTH_M = 26.0
 
 /** 월드 좌표(m) → 화면 좌표(px) 변환 */
-private class Projection(val scale: Float, val ox: Float, val oy: Float) {
+internal class Projection(val scale: Float, val ox: Float, val oy: Float) {
     fun toScreen(p: Vec2) = Offset(ox + p.x.toFloat() * scale, oy + p.y.toFloat() * scale)
     fun m(meters: Double) = meters.toFloat() * scale
 }
 
 /** 아스팔트 질감용 점 (맵마다 한 번만 만들어 둠) */
-private class Speckle(val pos: Vec2, val radiusM: Float, val color: Color)
+internal class Speckle(val pos: Vec2, val radiusM: Float, val color: Color)
 
 /**
  * 탑뷰 주차장 그리기.
@@ -121,37 +121,12 @@ fun ParkingCanvas(
     replay: () -> ReplayView? = { null },
 ) {
     val textMeasurer = rememberTextMeasurer()
-    val speckles = remember(sim.map) { makeSpeckles(sim.map) }
-    val sprites = rememberCarTopSprites()
-    val spriteList = remember(sprites) { sprites.values.toList() }
-    // 주차장 배치가 바뀔 때마다 주차된 차의 차종·색·방향을 새로 뽑음 (같은 배치에서는 그대로)
-    val parkedStyles = remember(sim.map) {
-        val rnd = Random(sim.map.parkedCars.hashCode())
-        sim.map.parkedCars.map {
-            ParkedStyle(
-                spriteIndex = rnd.nextInt(4), tint = ParkedTints.random(rnd),
-                // 평행주차는 길가에 세운 차라 모두 차로 진행 방향(오른쪽)을 봄
-                flipped = sim.map.mode == ParkingMode.PERPENDICULAR && rnd.nextBoolean(),
-            )
-        }
-    }
+    val assets = rememberTopAssets(sim)
 
     Canvas(modifier) {
         frame()  // 이 값을 읽어둬야 시뮬레이터가 움직일 때 다시 그려짐
+        val scene = sceneOf(sim, replay(), direction(), braking())
         val map = sim.map
-
-        // 그릴 차 상태: 평소에는 지금 상태, 다시 보기 중에는 재생하는 주행(내 주행 또는 모범 주행)의 그 시각 기록
-        val rv = replay()
-        val src = rv?.source ?: sim
-        val rt = rv?.timeSec
-        val shown = rt?.let { src.frameAt(it) }
-        val pose = shown?.pose ?: sim.pose
-        val wheelAngle = shown?.wheelAngleDeg ?: sim.wheelAngleDeg
-        val dirNow = shown?.direction ?: direction()
-        val brakingNow = shown?.braking ?: braking()
-        val atEnd = rt == null || rt >= src.history.last().timeSec
-        val crashedNow = src.status == SimStatus.COLLIDED && atEnd
-        val body = src.bodyRect(pose)
 
         // 축척: 가로는 최대 VIEW_WIDTH_M까지만 보여줘서 긴 주차장(평행주차)에서도 차가 작아지지 않게 함 (여백 1m)
         val margin = 1.0
@@ -165,71 +140,143 @@ fun ParkingCanvas(
         val cameraX = if (map.widthM + margin * 2 <= visibleM) {
             map.widthM / 2
         } else {
-            body.center.x.coerceIn(visibleM / 2 - margin, map.widthM + margin - visibleM / 2)
+            scene.body.center.x.coerceIn(visibleM / 2 - margin, map.widthM + margin - visibleM / 2)
         }
         val proj = Projection(
             scale = scale,
             ox = size.width / 2 - cameraX.toFloat() * scale,
             oy = (size.height - map.heightM.toFloat() * scale) / 2,
         )
-        val pulse = 0.5f + 0.5f * sin(System.nanoTime() / 1e9 * 3.0).toFloat()  // 0~1, 목표 칸 깜빡임
-
         drawRect(Backdrop)
-        drawGround(map, proj, speckles)
-        drawBays(map, proj, textMeasurer, pulse)
-        drawAisleArrows(map, proj)
+        drawTopScene(scene, assets, proj, textMeasurer)
+    }
+}
 
-        map.parkedCars.forEachIndexed { i, rect ->
-            // 주차된 차는 색과 방향을 섞어서 같은 차만 늘어선 느낌을 줄임
-            val style = parkedStyles[i]
-            val heading = if (style.flipped) rect.angle + Math.PI else rect.angle
-            drawCarTopDown(
-                center = rect.center, heading = heading,
-                lengthM = rect.halfLength * 2, widthM = rect.halfWidth * 2,
-                bodyColor = ParkedColors[i % ParkedColors.size], proj = proj,
-                sprite = spriteList.getOrNull(style.spriteIndex % spriteList.size.coerceAtLeast(1)),
-                colorFilter = ColorFilter.tint(style.tint, BlendMode.Modulate),
+/** 탑뷰·1인칭이 같이 쓰는 그림 재료 (판마다 한 번만 만듦) */
+internal class TopAssets(
+    val speckles: List<Speckle>,
+    val sprites: Map<String, CarTopSprite>,
+    val spriteList: List<CarTopSprite>,
+    val parkedStyles: List<ParkedStyle>,
+)
+
+@Composable
+internal fun rememberTopAssets(sim: ParkingSimulator): TopAssets {
+    val speckles = remember(sim.map) { makeSpeckles(sim.map) }
+    val sprites = rememberCarTopSprites()
+    val spriteList = remember(sprites) { sprites.values.toList() }
+    // 주차장 배치가 바뀔 때마다 주차된 차의 차종·색·방향을 새로 뽑음 (같은 배치에서는 그대로)
+    val parkedStyles = remember(sim.map) {
+        val rnd = Random(sim.map.parkedCars.hashCode())
+        sim.map.parkedCars.map {
+            ParkedStyle(
+                spriteIndex = rnd.nextInt(4), tint = ParkedTints.random(rnd),
+                // T자 주차만 앞뒤를 섞음. 평행(길가)·사선(앞으로 들어감)은 모두 같은 방향
+                flipped = sim.map.mode == ParkingMode.PERPENDICULAR && rnd.nextBoolean(),
             )
         }
-
-        if (rv == null || rt == null) {
-            // 지나온 경로 (옅게)
-            drawPoseLine(sim.trail, proj, TrailColor.copy(alpha = 0.3f), 2f)
-        } else {
-            // 다시 보기: 비교할 다른 주행은 옅게, 재생 중인 주행은 전체를 옅게 + 지금까지 온 길을 진하게
-            // 색: 내 주행 = 노랑, 모범 주행 = 초록
-            val srcColor = if (rv.isModel) ModelGreen else TrailColor
-            val otherColor = if (rv.isModel) TrailColor else ModelGreen
-            rv.compare?.let { other -> drawPoseLine(other.history.map { it.pose }, proj, otherColor.copy(alpha = 0.35f), proj.m(0.06)) }
-            drawPoseLine(src.history.map { it.pose }, proj, srcColor.copy(alpha = 0.25f), proj.m(0.06))
-            drawPoseLine(src.history.takeWhile { it.timeSec <= rt }.map { it.pose }, proj, srcColor, proj.m(0.1))
-        }
-
-        if (sim.status == SimStatus.DRIVING || (rt != null && !atEnd)) {
-            drawGuideLines(sim, pose, wheelAngle, dirNow, proj)
-        }
-
-        drawCarTopDown(
-            center = body.center, heading = pose.heading,
-            lengthM = sim.car.lengthM, widthM = sim.car.widthM,
-            bodyColor = if (crashedNow) CrashedRed else MyCarBody,
-            proj = proj,
-            sprite = sprites.forCar(sim.car),
-            colorFilter = if (crashedNow) CrashedTint else MyCarWhite,
-            lights = CarLights(brake = brakingNow, reverse = dirNow == Direction.REVERSE),
-            frontWheels = FrontWheels(
-                axleOffsetM = sim.car.wheelBaseM - (sim.car.lengthM / 2 - sim.car.rearOverhangM),
-                angleDeg = wheelAngle,
-            ),
-        )
-
-        if (sim.status != SimStatus.PARKED || !atEnd) {
-            drawSensors(Guidance.readSensors(body, map.obstacles), proj)
-        }
-
-        // 전환·충돌 표시는 차가 지나가도 가려지지 않게 맨 위에
-        if (rt != null) drawEventMarkers(src.events, rt, proj, textMeasurer)
     }
+    return remember(speckles, sprites, parkedStyles) { TopAssets(speckles, sprites, spriteList, parkedStyles) }
+}
+
+/**
+ * 지금 그릴 내 차 상태. 평소에는 시뮬레이터의 지금 상태, 다시 보기 중에는 재생하는 주행의 그 시각 기록.
+ * 탑뷰·1인칭·후방 카메라가 모두 이 값을 보고 그림.
+ */
+internal class Scene(
+    val sim: ParkingSimulator,
+    val replay: ReplayView?,
+    val src: ParkingSimulator,
+    val replayTime: Double?,
+    val pose: com.team.hyuncha.sim.CarPose,
+    val wheelAngleDeg: Double,
+    val direction: Direction,
+    val braking: Boolean,
+    val atEnd: Boolean,
+    val crashed: Boolean,
+    val body: OrientedRect,
+) {
+    /** 예상 진행선을 보여줄지 (주행 중이거나 재생 도중) */
+    val showGuide: Boolean get() = sim.status == SimStatus.DRIVING || (replayTime != null && !atEnd)
+}
+
+internal fun sceneOf(sim: ParkingSimulator, rv: ReplayView?, direction: Direction, braking: Boolean): Scene {
+    val src = rv?.source ?: sim
+    val rt = rv?.timeSec
+    val shown = rt?.let { src.frameAt(it) }
+    val pose = shown?.pose ?: sim.pose
+    val atEnd = rt == null || rt >= src.history.last().timeSec
+    return Scene(
+        sim = sim, replay = rv, src = src, replayTime = rt, pose = pose,
+        wheelAngleDeg = shown?.wheelAngleDeg ?: sim.wheelAngleDeg,
+        direction = shown?.direction ?: direction,
+        braking = shown?.braking ?: braking,
+        atEnd = atEnd,
+        crashed = src.status == SimStatus.COLLIDED && atEnd,
+        body = src.bodyRect(pose),
+    )
+}
+
+/** 탑뷰 장면 전체 (바닥·칸·주차된 차·경로·진행선·내 차·센서·사건 표시). 배경색은 부르는 쪽에서 칠함 */
+internal fun DrawScope.drawTopScene(scene: Scene, assets: TopAssets, proj: Projection, textMeasurer: TextMeasurer) {
+    val sim = scene.sim
+    val map = sim.map
+    val rv = scene.replay
+    val rt = scene.replayTime
+    val pulse = 0.5f + 0.5f * sin(System.nanoTime() / 1e9 * 3.0).toFloat()  // 0~1, 목표 칸 깜빡임
+
+    drawGround(map, proj, assets.speckles)
+    drawBays(map, proj, textMeasurer, pulse)
+    drawAisleArrows(map, proj)
+
+    map.parkedCars.forEachIndexed { i, rect ->
+        // 주차된 차는 색과 방향을 섞어서 같은 차만 늘어선 느낌을 줄임
+        val style = assets.parkedStyles[i]
+        val heading = if (style.flipped) rect.angle + Math.PI else rect.angle
+        drawCarTopDown(
+            center = rect.center, heading = heading,
+            lengthM = rect.halfLength * 2, widthM = rect.halfWidth * 2,
+            bodyColor = ParkedColors[i % ParkedColors.size], proj = proj,
+            sprite = assets.spriteList.getOrNull(style.spriteIndex % assets.spriteList.size.coerceAtLeast(1)),
+            colorFilter = ColorFilter.tint(style.tint, BlendMode.Modulate),
+        )
+    }
+
+    if (rv == null || rt == null) {
+        // 지나온 경로 (옅게)
+        drawPoseLine(sim.trail, proj, TrailColor.copy(alpha = 0.3f), 2f)
+    } else {
+        // 다시 보기: 비교할 다른 주행은 옅게, 재생 중인 주행은 전체를 옅게 + 지금까지 온 길을 진하게
+        // 색: 내 주행 = 노랑, 모범 주행 = 초록
+        val srcColor = if (rv.isModel) ModelGreen else TrailColor
+        val otherColor = if (rv.isModel) TrailColor else ModelGreen
+        rv.compare?.let { other -> drawPoseLine(other.history.map { it.pose }, proj, otherColor.copy(alpha = 0.35f), proj.m(0.06)) }
+        drawPoseLine(scene.src.history.map { it.pose }, proj, srcColor.copy(alpha = 0.25f), proj.m(0.06))
+        drawPoseLine(scene.src.history.takeWhile { it.timeSec <= rt }.map { it.pose }, proj, srcColor, proj.m(0.1))
+    }
+
+    if (scene.showGuide) drawGuideLines(sim, scene.pose, scene.wheelAngleDeg, scene.direction, proj)
+
+    drawCarTopDown(
+        center = scene.body.center, heading = scene.pose.heading,
+        lengthM = sim.car.lengthM, widthM = sim.car.widthM,
+        bodyColor = if (scene.crashed) CrashedRed else MyCarBody,
+        proj = proj,
+        sprite = assets.sprites.forCar(sim.car),
+        colorFilter = if (scene.crashed) CrashedTint else MyCarWhite,
+        lights = CarLights(brake = scene.braking, reverse = scene.direction == Direction.REVERSE),
+        frontWheels = FrontWheels(
+            axleOffsetM = sim.car.wheelBaseM - (sim.car.lengthM / 2 - sim.car.rearOverhangM),
+            angleDeg = scene.wheelAngleDeg,
+        ),
+    )
+
+    if (sim.status != SimStatus.PARKED || !scene.atEnd) {
+        drawSensors(Guidance.readSensors(scene.body, map.obstacles), proj)
+    }
+
+    // 전환·충돌 표시는 차가 지나가도 가려지지 않게 맨 위에
+    if (rt != null) drawEventMarkers(scene.src.events, rt, proj, textMeasurer)
 }
 
 private fun makeSpeckles(map: ParkingMap): List<Speckle> {

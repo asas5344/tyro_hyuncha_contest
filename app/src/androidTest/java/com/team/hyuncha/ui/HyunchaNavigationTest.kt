@@ -82,6 +82,18 @@ class HyunchaNavigationTest {
         val saved = UiPreferences(context, preferenceName)
         assertEquals(com.team.hyuncha.input.SteeringUnit.FRONT_WHEEL, saved.steeringUnit)
         assertFalse(saved.invertSteering)
+        // 내 차 카메라 설정도 저장됨
+        compose.onNodeWithTag("camera_SURROUND").performScrollTo().performClick(); settle()
+        assertEquals(com.team.hyuncha.data.CarCamera.SURROUND, UiPreferences(context, preferenceName).carCamera)
+    }
+
+    @Test fun parkingScreenStartsInDriverViewAndCanSwitchToTopView() {
+        openApp()
+        compose.onNodeWithTag("start_practice").performScrollTo().performClick(); settle()
+        compose.onNodeWithText("탑뷰로 보기").assertIsDisplayed()
+        compose.onNodeWithTag("toggle_view").performClick(); settle()
+        compose.onNodeWithText("운전석으로 보기").assertIsDisplayed()
+        capture("parking_screen", "parking-topview.png")
     }
 
     @Test fun selectedCarIsPassedIntoExistingSimulator() {

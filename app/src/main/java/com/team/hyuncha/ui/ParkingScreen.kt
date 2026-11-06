@@ -47,6 +47,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
+import androidx.compose.ui.platform.testTag
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
@@ -66,6 +68,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.team.hyuncha.data.CarCamera
 import com.team.hyuncha.data.CarPresets
 import com.team.hyuncha.data.CarSpec
 import com.team.hyuncha.input.Direction
@@ -105,6 +108,7 @@ fun ParkingScreen(
     parkingMode: ParkingMode = ParkingMode.PERPENDICULAR,
     steeringUnit: SteeringUnit = SteeringUnit.STEERING_WHEEL,
     invertSteering: Boolean = true,
+    carCamera: CarCamera = CarCamera.REAR_ONLY,
 ) {
     val car = initialCar
     val currentCar by rememberUpdatedState(car)
@@ -113,6 +117,9 @@ fun ParkingScreen(
     val vehicleInput = remember(vehicle) {
         vehicle?.let { VehicleInput(it) { currentCar.steeringRatio } }
     }
+    // 시점: 운전석(1인칭, 기본) ↔ 탑뷰
+    var firstPerson by rememberSaveable { mutableStateOf(true) }
+
     // 설정 화면의 조향값 해석을 차량 입력에 적용
     SideEffect {
         vehicleInput?.steeringUnit = steeringUnit
@@ -219,20 +226,29 @@ fun ParkingScreen(
                     .weight(1f)
                     .fillMaxHeight(),
             ) {
-                ParkingCanvas(
+                val replayView = {
+                    if (!replaying) null
+                    else {
+                        val model = plan?.run
+                        if (replayModel && model != null) ReplayView(model, replayClock.doubleValue, isModel = true, compare = sim)
+                        else ReplayView(sim, replayClock.doubleValue, isModel = false, compare = model)
+                    }
+                }
+                if (firstPerson) FirstPersonCanvas(
+                    sim = sim,
+                    frame = { frame.longValue },
+                    direction = { input.direction },
+                    braking = { input.brakePressed },
+                    camera = carCamera,
+                    modifier = Modifier.fillMaxSize(),
+                    replay = replayView,
+                ) else ParkingCanvas(
                     sim = sim,
                     frame = { frame.longValue },
                     direction = { input.direction },
                     braking = { input.brakePressed },
                     modifier = Modifier.fillMaxSize(),
-                    replay = {
-                        if (!replaying) null
-                        else {
-                            val model = plan?.run
-                            if (replayModel && model != null) ReplayView(model, replayClock.doubleValue, isModel = true, compare = sim)
-                            else ReplayView(sim, replayClock.doubleValue, isModel = false, compare = model)
-                        }
-                    },
+                    replay = replayView,
                 )
                 SimHud(
                     sim = sim,
@@ -270,6 +286,20 @@ fun ParkingScreen(
                             .align(Alignment.BottomCenter)
                             .padding(24.dp),
                     )
+                }
+                // 시점 바꾸기 (왼쪽 아래)
+                if (!replaying) {
+                    OutlinedButton(
+                        onClick = { firstPerson = !firstPerson },
+                        colors = ButtonDefaults.outlinedButtonColors(containerColor = Color.Black.copy(alpha = 0.55f)),
+                        modifier = Modifier
+                            .align(Alignment.BottomStart)
+                            .padding(24.dp)
+                            .height(64.dp)
+                            .testTag("toggle_view"),
+                    ) {
+                        Text(if (firstPerson) "탑뷰로 보기" else "운전석으로 보기", color = Color.White, fontSize = 22.sp * LocalAppTextScale.current)
+                    }
                 }
                 // 실제 차량 모드: 메뉴 대신 전진/후진과 다시 하기만 작게 띄움 (기어는 P 고정이라 방향은 앱에서 고름)
                 if (input === vehicleInput && !replaying) {
