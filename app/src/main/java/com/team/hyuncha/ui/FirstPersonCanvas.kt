@@ -2,6 +2,7 @@ package com.team.hyuncha.ui
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.CornerRadius
@@ -28,12 +29,16 @@ import com.team.hyuncha.data.CarCamera
 import com.team.hyuncha.data.CarSpec
 import com.team.hyuncha.data.CarType
 import com.team.hyuncha.input.Direction
+import com.team.hyuncha.input.LookButtons
+import com.team.hyuncha.input.LookSide
 import com.team.hyuncha.sim.CarPose
 import com.team.hyuncha.sim.Guidance
 import com.team.hyuncha.sim.OrientedRect
 import com.team.hyuncha.sim.ParkingMode
 import com.team.hyuncha.sim.ParkingSimulator
 import com.team.hyuncha.sim.Vec2
+import kotlin.math.atan
+import kotlin.math.atan2
 import kotlin.math.cos
 import kotlin.math.exp
 import kotlin.math.hypot
@@ -246,13 +251,20 @@ private fun local(pose: CarPose, a: Double, b: Double, z: Double): V3 {
     return V3(pose.x + c * a - s * b, pose.y + s * a + c * b, z)
 }
 
-/** 운전석 눈 위치: 차 길이의 약 45% 지점, 왼쪽 좌석(한국은 왼쪽 운전석), 세단·SUV 높이 다르게 */
-private fun driverCam(car: CarSpec, pose: CarPose, area: Rect): PerspectiveCam {
-    val forward = car.lengthM * 0.45 - car.rearOverhangM
-    val eyeZ = if (car.type == CarType.SUV) 1.38 else 1.18
-    // 거의 수평으로 앞을 봄. 보닛 바로 아래부터는 대시보드에 가려 바닥이 안 보이는 실제 운전석과 같게
-    return PerspectiveCam(local(pose, forward, -0.37, eyeZ), pose.heading, pitchDeg = 2.0, vFovDeg = 56.0, area = area)
-}
+private const val EYE_B = -0.37     // 운전석 눈의 옆 위치 (한국은 왼쪽 운전석)
+private const val BELT_Z = 1.0      // 창문 아래 선(문 위쪽)·앞유리 아래쪽 높이
+
+private fun eyeA(car: CarSpec) = car.lengthM * 0.45 - car.rearOverhangM           // 눈의 앞뒤 위치 (뒷바퀴 축 기준)
+private fun eyeZ(car: CarSpec) = if (car.type == CarType.SUV) 1.38 else 1.18
+private fun windshieldA(car: CarSpec) = eyeA(car) + 0.85                             // 앞유리 아래쪽
+
+/**
+ * 운전석 눈 위치: 차 길이의 약 45% 지점, 왼쪽 좌석, 세단·SUV 높이 다르게.
+ * 기본은 거의 수평으로 앞을 봄. 보닛 바로 아래부터는 대시보드에 가려 바닥이 안 보이는 실제 운전석과 같게.
+ * @param yawDeg 고개를 돌린 각도 (오른쪽 양수)
+ */
+private fun driverCam(car: CarSpec, pose: CarPose, area: Rect, yawDeg: Double = 0.0, pitchDeg: Double = 2.0, vFovDeg: Double = 56.0) =
+    PerspectiveCam(local(pose, eyeA(car), EYE_B, eyeZ(car)), pose.heading + Math.toRadians(yawDeg), pitchDeg = pitchDeg, vFovDeg = vFovDeg, area = area)
 
 /** 후방 카메라: 뒤 범퍼 위에서 뒤쪽 바닥을 넓게 내려다봄. 실제 차처럼 좌우를 거울처럼 뒤집어 보여줌 */
 private fun rearCam(car: CarSpec, pose: CarPose, area: Rect): PerspectiveCam {
@@ -280,11 +292,30 @@ private class Smoothed {
     }
 }
 
+/** 고개 방향: 좌우 각도(오른쪽 양수), 내려다보는 각도, 시야 (사이드미러를 볼 때는 시야를 좁혀서 미러에 집중) */
+private class Head(val yawDeg: Double, val pitchDeg: Double, val vFovDeg: Double)
+
+private val FrontHead = Head(0.0, 2.0, 56.0)
+
+/** 사이드미러를 정면으로 보도록 고개를 돌린 방향. 미러가 화면 높이의 약 1/4로 보이게 시야를 좁힘 (주변 창틀도 같이 보이게) */
+private fun headFor(car: CarSpec, side: LookSide): Head {
+    if (side == LookSide.FRONT) return FrontHead
+    val m = mirrorCenter(car, side.step)
+    val da = m.x - eyeA(car)
+    val db = m.y - EYE_B
+    val dz = m.z - eyeZ(car)
+    val flat = hypot(da, db)
+    val dist = hypot(flat, dz)
+    val fov = Math.toDegrees(2 * atan(MIRROR_H / (0.5 * dist))).coerceIn(16.0, 56.0)
+    return Head(Math.toDegrees(atan2(db, da)), Math.toDegrees(atan2(-dz, flat)), fov)
+}
+
 /**
  * 1인칭(운전석) 주차 화면.
- * - 큰 화면: 운전석에서 본 앞유리 너머 + 실내(보닛·와이퍼·룸미러·선바이저·대시보드·송풍구·계기판·핸들)
- * - 대시보드 위 차량 디스플레이: 전진 중엔 내 차 주변 미니맵,
- *   후진하면 커지면서 내 차 카메라 종류에 따라 후방 카메라 또는 탑뷰(서라운드 뷰)
+ * - 운전석에서 본 앞유리 너머 + 실내(보닛·와이퍼·앞 기둥·문·룸미러·선바이저·대시보드·송풍구·계기판·핸들)
+ * - 핸들의 ◀◀ / ▶▶ 버튼(LookButtons)으로 고개를 돌려 왼쪽·오른쪽 사이드미러를 봄
+ * - 후진하면 대시보드 위 차량 화면에 내 차 카메라 종류에 따라 후방 카메라 또는 탑뷰(서라운드 뷰).
+ *   전진할 때는 실제 차처럼 주변 지도(미니맵)가 없음
  */
 @Composable
 fun FirstPersonCanvas(
@@ -299,60 +330,216 @@ fun FirstPersonCanvas(
     val textMeasurer = rememberTextMeasurer()
     val assets = rememberTopAssets(sim)
     val steeringShown = remember { Smoothed() }
+    val yawShown = remember { Smoothed() }
+    val pitchShown = remember { Smoothed() }
+    val fovShown = remember { Smoothed() }
+
+    // 이 화면이 떠 있는 동안만 핸들 버튼을 고개 돌리기로 씀
+    DisposableEffect(Unit) {
+        LookButtons.active = true
+        onDispose { LookButtons.active = false }
+    }
 
     Canvas(modifier) {
         frame()
         val scene = sceneOf(sim, replay(), direction(), braking())
         val car = sim.car
         val main = Rect(0f, 0f, size.width, size.height)
-        val cam = driverCam(car, scene.pose, main)
-        val dashTop = dashboardTop(cam, car, scene.pose, main)
+        val now = System.nanoTime()
+        val side = LookButtons.side
+        val target = headFor(car, side)
+        val head = Head(
+            yawShown.update(target.yawDeg.toFloat(), now, tau = 0.14f).toDouble(),
+            pitchShown.update(target.pitchDeg.toFloat(), now, tau = 0.14f).toDouble(),
+            fovShown.update(target.vFovDeg.toFloat(), now, tau = 0.14f).toDouble(),
+        )
+        val front = driverCam(car, scene.pose, main)
+        val cam = driverCam(car, scene.pose, main, head.yawDeg, head.pitchDeg, head.vFovDeg)
+        val dashTop = dashboardTop(front, car, scene.pose, main)
 
-        // 1) 앞유리 너머
+        // 1) 창 너머
         clipRect(main.left, main.top, main.right, main.bottom) {
             drawPerspectiveScene(scene, assets, cam, Direction.FORWARD.takeIf { scene.direction == Direction.FORWARD })
         }
-        // 2) 실내
+        // 2) 차체·실내 중 고개를 돌리면 원근이 바뀌는 것 (3D로 그림)
         drawHood(cam, car, scene.pose)
-        drawWindshieldFrame(main, dashTop)
-        drawRoomMirror(scene, assets, car, main)
-        drawDashboard(main, dashTop)
-        drawCluster(scene, main, dashTop, textMeasurer)
-        val steeringDeg = steeringShown.update((scene.wheelAngleDeg * car.steeringRatio).toFloat(), System.nanoTime())
-        drawSteeringWheel(main, dashTop, steeringDeg)
+        drawCabin3D(cam, car, scene.pose)
+        listOf(-1, 1).forEach { s -> drawSideMirror(scene, assets, cam, car, s, main) }
+        drawPillars(cam, car, scene.pose)
 
-        // 3) 차량 디스플레이: 대시보드 위에 얹힌 화면처럼. 후진하면 커짐
-        val reversing = scene.direction == Direction.REVERSE
-        val iw = size.width * if (reversing) 0.42f else 0.27f
-        val ih = iw * 0.62f
-        val right = size.width - size.width * 0.03f
-        val bottom = (dashTop + main.height * 0.08f).coerceAtMost(size.height - 150f)
-        val inset = Rect(right - iw, bottom - ih, right, bottom)
-        val rearCamera = reversing && camera == CarCamera.REAR_ONLY
-        val label = when {
-            rearCamera -> "후방 카메라"
-            reversing -> "서라운드 뷰"
-            else -> "미니맵"
+        // 3) 운전자 앞쪽 실내: 정면 기준으로 그린 뒤, 고개를 돌린 만큼 화면에서 밀어내고 확대
+        val ahead = local(scene.pose, eyeA(car) + 50.0, EYE_B, eyeZ(car))
+        val pFront = front.project(front.toCam(ahead))
+        val aheadCam = cam.toCam(ahead)
+        val pTurned = if (aheadCam.x > NEAR) cam.project(aheadCam) else Offset(pFront.x - size.width * 3, pFront.y)
+        val k = (cam.focal / front.focal).toFloat()
+        val steeringDeg = steeringShown.update((scene.wheelAngleDeg * car.steeringRatio).toFloat(), now)
+        withTransform({
+            translate(pTurned.x - pFront.x, pTurned.y - pFront.y)
+            scale(k, k, pivot = pFront)
+        }) {
+            drawWindshieldFrame(main)
+            drawRoomMirror(scene, assets, car, main)
+            drawDashboard(main, dashTop)
+            drawCluster(scene, main, dashTop, textMeasurer)
+            drawSteeringWheel(main, dashTop, steeringDeg)
+            if (scene.direction == Direction.REVERSE) drawCarDisplay(scene, assets, camera, main, dashTop, textMeasurer)
         }
-        // 화면 테두리(베젤)와 그림자
-        drawRoundRect(Color.Black.copy(alpha = 0.45f), topLeft = inset.topLeft + Offset(6f, 10f), size = inset.size, cornerRadius = CornerRadius(26f))
-        drawRoundRect(Color(0xFF0B0C0E), topLeft = inset.topLeft - Offset(12f, 12f), size = Size(inset.width + 24f, inset.height + 24f), cornerRadius = CornerRadius(30f))
-        clipPath(Path().apply { addRoundRect(RoundRect(inset, CornerRadius(20f))) }) {
-            if (rearCamera) {
-                drawPerspectiveScene(scene, assets, rearCam(car, scene.pose, inset), Direction.REVERSE)
-                drawRearCamOverlay(inset)
-            } else {
-                drawSurround(scene, assets, inset, viewM = if (reversing) 13.0 else 22.0, textMeasurer = textMeasurer,
-                    focusY = if (reversing) 0.36f else 0.5f)
-            }
+
+        // 4) 버튼 안내
+        val hint = when (side) {
+            LookSide.FRONT -> "◀◀ 왼쪽 미러   ▶▶ 오른쪽 미러"
+            LookSide.LEFT -> "왼쪽 사이드미러 보는 중 · ▶▶ 앞으로"
+            LookSide.RIGHT -> "오른쪽 사이드미러 보는 중 · ◀◀ 앞으로"
         }
-        drawRoundRect(Color.White.copy(alpha = 0.18f), topLeft = inset.topLeft - Offset(12f, 12f), size = Size(inset.width + 24f, inset.height + 24f),
-            cornerRadius = CornerRadius(30f), style = Stroke(width = 2f))
-        val layout = textMeasurer.measure(label, TextStyle(color = Color.White, fontSize = (20f).toSp(), fontWeight = FontWeight.Bold))
-        drawRoundRect(Color.Black.copy(alpha = 0.6f), topLeft = Offset(inset.left + 14f, inset.top + 14f),
-            size = Size(layout.size.width + 24f, layout.size.height + 12f), cornerRadius = CornerRadius(12f))
-        drawText(layout, topLeft = Offset(inset.left + 26f, inset.top + 20f))
+        val strong = side != LookSide.FRONT
+        val layout = textMeasurer.measure(hint, TextStyle(color = Color.White.copy(alpha = if (strong) 1f else 0.75f), fontSize = (19f).toSp(),
+            fontWeight = if (strong) FontWeight.Bold else FontWeight.Normal))
+        val hx = size.width * 0.42f - layout.size.width / 2f
+        val hy = size.height * 0.025f
+        drawRoundRect(Color.Black.copy(alpha = if (strong) 0.65f else 0.4f), topLeft = Offset(hx - 18f, hy - 8f),
+            size = Size(layout.size.width + 36f, layout.size.height + 16f), cornerRadius = CornerRadius(40f))
+        drawText(layout, topLeft = Offset(hx, hy))
     }
+}
+
+/** 후진할 때 대시보드 위 차량 화면: 내 차 카메라 종류에 따라 후방 카메라 또는 탑뷰(서라운드 뷰) */
+private fun DrawScope.drawCarDisplay(scene: Scene, assets: TopAssets, camera: CarCamera, main: Rect, dashTop: Float, textMeasurer: TextMeasurer) {
+    val car = scene.sim.car
+    val iw = main.width * 0.42f
+    val ih = iw * 0.62f
+    val right = main.right - main.width * 0.03f
+    val bottom = (dashTop + main.height * 0.08f).coerceAtMost(main.bottom - 150f)
+    val inset = Rect(right - iw, bottom - ih, right, bottom)
+    val rearCamera = camera == CarCamera.REAR_ONLY
+    val label = if (rearCamera) "후방 카메라" else "서라운드 뷰"
+    // 화면 테두리(베젤)와 그림자
+    drawRoundRect(Color.Black.copy(alpha = 0.45f), topLeft = inset.topLeft + Offset(6f, 10f), size = inset.size, cornerRadius = CornerRadius(26f))
+    drawRoundRect(Color(0xFF0B0C0E), topLeft = inset.topLeft - Offset(12f, 12f), size = Size(inset.width + 24f, inset.height + 24f), cornerRadius = CornerRadius(30f))
+    clipPath(Path().apply { addRoundRect(RoundRect(inset, CornerRadius(20f))) }) {
+        if (rearCamera) {
+            drawPerspectiveScene(scene, assets, rearCam(car, scene.pose, inset), Direction.REVERSE)
+            drawRearCamOverlay(inset)
+        } else {
+            drawSurround(scene, assets, inset, viewM = 13.0, textMeasurer = textMeasurer, focusY = 0.36f)
+        }
+    }
+    drawRoundRect(Color.White.copy(alpha = 0.18f), topLeft = inset.topLeft - Offset(12f, 12f), size = Size(inset.width + 24f, inset.height + 24f),
+        cornerRadius = CornerRadius(30f), style = Stroke(width = 2f))
+    val layout = textMeasurer.measure(label, TextStyle(color = Color.White, fontSize = (20f).toSp(), fontWeight = FontWeight.Bold))
+    drawRoundRect(Color.Black.copy(alpha = 0.6f), topLeft = Offset(inset.left + 14f, inset.top + 14f),
+        size = Size(layout.size.width + 24f, layout.size.height + 12f), cornerRadius = CornerRadius(12f))
+    drawText(layout, topLeft = Offset(inset.left + 26f, inset.top + 20f))
+}
+
+// ───────── 고개를 돌리면 보이는 차체 (3D) ─────────
+
+private val DoorTrim = Color(0xFF1C1E22)
+private val DoorSill = Color(0xFF2B2E33)
+private val MirrorBody = Color(0xFFB9BCC1)        // 내 차(흰색) 미러 덮개. 어두운 주차장이라 회색빛
+private const val MIRROR_W = 0.24                  // 사이드미러 거울 크기 (m)
+private const val MIRROR_H = 0.16
+
+/** 대시보드 윗면·앞면과 양쪽 문 안쪽 면. 정면에서는 화면 밖이지만 고개를 돌리면 보임 */
+private fun DrawScope.drawCabin3D(cam: PerspectiveCam, car: CarSpec, pose: CarPose) {
+    val hw = car.widthM / 2
+    val ws = windshieldA(car)
+    val ea = eyeA(car)
+    val dashBack = ea + 0.5
+    poly3(cam, listOf(local(pose, ws, -(hw - 0.05), BELT_Z), local(pose, ws, hw - 0.05, BELT_Z),
+        local(pose, dashBack, hw - 0.05, BELT_Z - 0.02), local(pose, dashBack, -(hw - 0.05), BELT_Z - 0.02)), DashTopColor)
+    poly3(cam, listOf(local(pose, dashBack, -(hw - 0.05), BELT_Z - 0.02), local(pose, dashBack, hw - 0.05, BELT_Z - 0.02),
+        local(pose, dashBack, hw - 0.05, 0.3), local(pose, dashBack, -(hw - 0.05), 0.3)), Dash)
+    for (s in listOf(-1, 1)) {
+        val inner = s * (hw - 0.07)
+        val outer = s * (hw - 0.01)
+        // 문 안쪽 면, 그 위 창틀
+        poly3(cam, listOf(local(pose, ea - 1.0, inner, 0.3), local(pose, ws, inner, 0.3), local(pose, ws, inner, BELT_Z), local(pose, ea - 1.0, inner, BELT_Z)), DoorTrim)
+        poly3(cam, listOf(local(pose, ea - 1.0, inner, BELT_Z), local(pose, ws, inner, BELT_Z), local(pose, ws, outer, BELT_Z), local(pose, ea - 1.0, outer, BELT_Z)), DoorSill)
+    }
+}
+
+/** 앞 기둥(A필러) 2개: 앞유리 양쪽에서 천장까지 비스듬히 올라감 */
+private fun DrawScope.drawPillars(cam: PerspectiveCam, car: CarSpec, pose: CarPose) {
+    val hw = car.widthM / 2
+    val ws = windshieldA(car)
+    val roofZ = eyeZ(car) + 0.26
+    for (s in listOf(-1, 1)) {
+        poly3(cam, listOf(
+            local(pose, ws + 0.03, s * (hw - 0.02), BELT_Z), local(pose, ws - 0.16, s * (hw - 0.22), BELT_Z),
+            local(pose, ws - 0.55, s * (hw - 0.3), roofZ), local(pose, ws - 0.4, s * (hw - 0.08), roofZ),
+        ), Pillar)
+    }
+}
+
+/** 사이드미러 거울 가운데 (차 기준: x = 앞, y = 오른쪽, z = 높이). side: -1 왼쪽, 1 오른쪽 */
+private fun mirrorCenter(car: CarSpec, side: Int) = V3(windshieldA(car) - 0.4, side * (car.widthM / 2 + 0.17), BELT_Z + 0.09)
+
+/**
+ * 사이드미러: 문 밖에 붙은 덮개 + 거울. 거울에는 차 뒤쪽 옆이 좌우가 뒤집혀 비침.
+ * 거울면은 운전자 눈과 "뒤쪽 바깥 12도" 방향의 가운데를 향하게 세움 (반사 법칙).
+ * 거울 안쪽 가장자리에는 실제처럼 내 차 옆면이 조금 보임.
+ */
+private fun DrawScope.drawSideMirror(scene: Scene, assets: TopAssets, cam: PerspectiveCam, car: CarSpec, side: Int, screen: Rect) {
+    val pose = scene.pose
+    val m = mirrorCenter(car, side)
+    val delta = Math.toRadians(12.0)
+    val ra = -cos(delta)
+    val rb = side * sin(delta)
+    val ea = eyeA(car) - m.x
+    val eb = EYE_B - m.y
+    val el = hypot(ea, eb)
+    var na = ea / el + ra
+    var nb = eb / el + rb
+    val nl = hypot(na, nb)
+    na /= nl; nb /= nl
+    val ua = -nb                // 거울면의 가로 방향
+    val ub = na
+    val hw = MIRROR_W / 2
+    val hh = MIRROR_H / 2
+    fun pt(u: Double, v: Double, n: Double = 0.0) = local(pose, m.x + ua * u + na * n, m.y + ub * u + nb * n, m.z + v)
+    // 실제 미러처럼 모서리가 둥글고 바깥쪽이 조금 더 높은 모양 (u 방향으로 +가 바깥쪽인지)
+    val outward = if (side < 0) 1.0 else -1.0
+    fun outline(scale: Double, n: Double) = (0 until 32).map { i ->
+        val t = i / 32.0 * 2 * Math.PI
+        val cu = cos(t)
+        val sv = sin(t)
+        val u = Math.signum(cu) * Math.sqrt(kotlin.math.abs(cu)) * hw * scale
+        val v = Math.signum(sv) * Math.sqrt(kotlin.math.abs(sv)) * hh * scale * (1 + 0.15 * outward * u / hw)
+        pt(u, v, n)
+    }
+
+    // 덮개: 거울 뒤쪽 껍데기와 거울을 감싼 테두리
+    poly3(cam, outline(1.12, -0.08), shade(MirrorBody, 0.82))
+    poly3(cam, outline(1.1, 0.0), MirrorBody)
+    // 미러 받침 (문과 덮개를 이어줌)
+    val bodyOuter = side * (car.widthM / 2 - 0.01)
+    poly3(cam, listOf(local(pose, m.x + 0.14, bodyOuter, BELT_Z + 0.02), local(pose, m.x + 0.02, bodyOuter, BELT_Z + 0.02),
+        pt(-outward * hw * 0.55, -hh * 0.6, -0.05), pt(-outward * hw * 0.15, -hh * 0.6, -0.05)), shade(MirrorBody, 0.7))
+
+    // 거울면
+    val glass = outline(1.0, 0.004).map(cam::toCam)
+    if (glass.any { it.x < NEAR }) return
+    val pts = glass.map(cam::project)
+    val path = Path().apply {
+        moveTo(pts[0].x, pts[0].y); pts.drop(1).forEach { lineTo(it.x, it.y) }; close()
+    }
+    val bounds = Rect(pts.minOf { it.x }, pts.minOf { it.y }, pts.maxOf { it.x }, pts.maxOf { it.y })
+    if (!bounds.overlaps(screen) || bounds.height < 4f) return
+    clipPath(path) {
+        val view = PerspectiveCam(local(pose, m.x, m.y, m.z), pose.heading + atan2(rb, ra), pitchDeg = if (side < 0) 4.0 else 8.0,
+            vFovDeg = if (side < 0) 20.0 else 26.0, area = bounds, mirror = true)
+        drawPerspectiveScene(scene, assets, view, null)
+        // 안쪽 가장자리의 내 차 옆면 (왼쪽 미러는 오른쪽 끝, 오른쪽 미러는 왼쪽 끝)
+        val bw = bounds.width * 0.22f
+        val left = if (side < 0) bounds.right - bw else bounds.left
+        drawRect(Brush.horizontalGradient(
+            if (side < 0) listOf(shade(MirrorBody, 0.8), MirrorBody) else listOf(MirrorBody, shade(MirrorBody, 0.8)),
+            startX = left, endX = left + bw,
+        ), topLeft = Offset(left, bounds.top), size = Size(bw, bounds.height))
+        drawRect(Color.White.copy(alpha = 0.07f), topLeft = bounds.topLeft, size = bounds.size)   // 거울 반사광
+    }
+    drawPath(path, Color(0xFF0E0F11), style = Stroke(width = (bounds.height * 0.025f).coerceIn(2f, 6f)))
 }
 
 /**
@@ -392,7 +579,7 @@ private val ClusterBg = Color(0xFF07080A)
 
 /** 앞유리 아래쪽 선(= 보닛이 끝나는 곳)의 화면 y. 대시보드가 여기서 시작함 */
 private fun dashboardTop(cam: PerspectiveCam, car: CarSpec, pose: CarPose, area: Rect): Float {
-    val windshield = car.lengthM * 0.45 - car.rearOverhangM + 0.85
+    val windshield = windshieldA(car)
     val ws = cam.toCam(local(pose, windshield, 0.0, 1.0))
     return (if (ws.x > NEAR) cam.project(ws).y else area.bottom - area.height * 0.3f)
         .coerceIn(area.top + area.height * 0.4f, area.bottom - area.height * 0.1f)
@@ -401,7 +588,7 @@ private fun dashboardTop(cam: PerspectiveCam, car: CarSpec, pose: CarPose, area:
 /** 보닛: 실제 차 크기대로 원근 투영해서 앞 범퍼가 어디쯤인지 감을 잡을 수 있게 함. 앞유리 아래 와이퍼 포함 */
 private fun DrawScope.drawHood(cam: PerspectiveCam, car: CarSpec, pose: CarPose) {
     val front = car.lengthM - car.rearOverhangM - 0.05
-    val windshield = car.lengthM * 0.45 - car.rearOverhangM + 0.85
+    val windshield = windshieldA(car)
     val hw = car.widthM / 2
     val hoodPts = listOf(
         local(pose, front, -(hw - 0.2), 0.86), local(pose, front, hw - 0.2, 0.86),
@@ -420,26 +607,18 @@ private fun DrawScope.drawHood(cam: PerspectiveCam, car: CarSpec, pose: CarPose)
     }
 }
 
-/** 앞유리 테두리: 천장 끝, 앞 기둥(A필러), 운전석·조수석 선바이저 */
-private fun DrawScope.drawWindshieldFrame(area: Rect, dashTop: Float) {
+/** 앞유리 위쪽: 천장 끝과 운전석·조수석 선바이저 (고개를 돌리면 같이 밀려나도록 좌우로 넉넉하게 그림) */
+private fun DrawScope.drawWindshieldFrame(area: Rect) {
     val w = area.width
     val h = area.height
-    // 천장: 위쪽이 살짝 둥글게 내려옴
     drawPath(Path().apply {
-        moveTo(area.left, area.top); lineTo(area.right, area.top)
+        moveTo(area.left - w, area.top); lineTo(area.right + w, area.top)
+        lineTo(area.right + w, area.top + h * 0.12f)
         lineTo(area.right, area.top + h * 0.09f)
         quadraticTo(area.center.x, area.top + h * 0.035f, area.left, area.top + h * 0.1f)
+        lineTo(area.left - w, area.top + h * 0.13f)
         close()
     }, Brush.verticalGradient(listOf(Color(0xFF101114), Headliner), startY = area.top, endY = area.top + h * 0.1f))
-    // 앞 기둥 (운전석이 왼쪽이라 오른쪽 기둥이 더 멀고 가늘게 보임)
-    drawPath(Path().apply {
-        moveTo(area.left, area.top); lineTo(area.left + w * 0.11f, area.top)
-        lineTo(area.left + w * 0.035f, dashTop); lineTo(area.left, dashTop + h * 0.04f); close()
-    }, Brush.horizontalGradient(listOf(Color(0xFF0C0D0F), Pillar, Color(0xFF1E2024)), startX = area.left, endX = area.left + w * 0.11f))
-    drawPath(Path().apply {
-        moveTo(area.right, area.top); lineTo(area.right - w * 0.055f, area.top)
-        lineTo(area.right - w * 0.013f, dashTop - h * 0.02f); lineTo(area.right, dashTop); close()
-    }, Pillar)
     // 선바이저 (접혀 있는 상태)
     drawRoundRect(Color(0xFF2A2D32), topLeft = Offset(area.left + w * 0.07f, area.top + h * 0.015f), size = Size(w * 0.24f, h * 0.075f), cornerRadius = CornerRadius(h * 0.03f))
     drawRoundRect(Color(0xFF2A2D32), topLeft = Offset(area.right - w * 0.27f, area.top + h * 0.01f), size = Size(w * 0.2f, h * 0.06f), cornerRadius = CornerRadius(h * 0.03f))
@@ -458,9 +637,7 @@ private fun DrawScope.drawRoomMirror(scene: Scene, assets: TopAssets, car: CarSp
     // 거울 테두리
     drawRoundRect(Color(0xFF111215), topLeft = mirror.topLeft - Offset(8f, 8f), size = Size(mirror.width + 16f, mirror.height + 16f), cornerRadius = CornerRadius(mirror.height * 0.5f))
     clipPath(Path().apply { addRoundRect(RoundRect(mirror, CornerRadius(mirror.height * 0.45f))) }) {
-        val eyeA = car.lengthM * 0.45 - car.rearOverhangM + 0.5
-        val eyeZ = if (car.type == CarType.SUV) 1.38 else 1.18
-        val back = PerspectiveCam(local(scene.pose, eyeA, 0.0, eyeZ), scene.pose.heading + Math.PI, pitchDeg = 4.0, vFovDeg = 24.0, area = mirror, mirror = true)
+        val back = PerspectiveCam(local(scene.pose, eyeA(car) + 0.5, 0.0, eyeZ(car)), scene.pose.heading + Math.PI, pitchDeg = 4.0, vFovDeg = 24.0, area = mirror, mirror = true)
         drawPerspectiveScene(scene, assets, back, null)
         // 뒷유리 테두리와 뒷좌석 머리받침
         drawRect(Color(0xFF15161A), topLeft = mirror.topLeft, size = Size(mirror.width, mirror.height * 0.16f))
