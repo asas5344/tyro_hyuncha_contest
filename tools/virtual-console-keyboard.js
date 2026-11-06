@@ -10,6 +10,9 @@
 //   ← / →               누르고 있는 동안 핸들이 부드럽게 계속 돌아감 (초당 약 300도)
 //   Shift + ← / →       더 빨리 돌림 (초당 약 600도)
 //   0                   핸들 가운데로
+//   Q / E               핸들의 이전 곡(◀◀) / 다음 곡(▶▶) 버튼 → 운전석 화면에서 왼쪽 / 오른쪽 사이드미러
+//                       (짧게 = 한 칸씩 돌리기, 누르고 있기 = 누르는 동안만 보기)
+//                       tools/start-console.sh가 켜주는 연결 프로그램(steering-buttons-bridge.py)이 필요함
 //
 // 콘솔 페이지 안의 함수(setSteeringAngle, markLocalControl)와 상태(pedals, vehicle)를 그대로 써서
 // 마우스로 조작한 것과 똑같이 차량 시스템에 전달됨. 페이지를 새로고침하면 다시 실행해야 함.
@@ -49,8 +52,27 @@
   };
   requestAnimationFrame(tick);
 
+  // 핸들 버튼: 연결 프로그램에 누름/뗌을 보냄. 한글 입력 상태여도 되도록 e.code로 확인
+  const buttons = { KeyQ: "prev", KeyE: "next" };
+  const pressedButtons = new Set();
+  // 누름·뗌 순서가 바뀌지 않도록 앞 요청이 끝난 뒤에 다음 요청을 보냄
+  let queue = Promise.resolve();
+  const sendButton = (key, action) => {
+    queue = queue
+      .then(() => fetch(`http://127.0.0.1:8089/button?key=${key}&action=${action}`))
+      .catch(() => console.warn("핸들 버튼 연결 프로그램이 꺼져 있어요. 터미널에서 ./tools/start-console.sh 를 다시 실행하세요"));
+  };
+
   addEventListener("keydown", (e) => {
     held.fast = e.shiftKey;
+    if (buttons[e.code]) {
+      e.preventDefault();
+      if (!e.repeat && !pressedButtons.has(e.code)) {
+        pressedButtons.add(e.code);
+        sendButton(buttons[e.code], "down");
+      }
+      return;
+    }
     if (e.code === "Space") {
       e.preventDefault();
       if (!e.repeat) setBrake(true);
@@ -68,6 +90,10 @@
 
   addEventListener("keyup", (e) => {
     held.fast = e.shiftKey;
+    if (buttons[e.code]) {
+      if (pressedButtons.delete(e.code)) sendButton(buttons[e.code], "up");
+      return;
+    }
     if (e.code === "Space") {
       e.preventDefault();
       setBrake(false);
@@ -81,8 +107,10 @@
   // 창 밖으로 포커스가 나가면 키를 뗀 것을 못 받을 수 있으니 안전하게 브레이크를 밟은 상태로 둠
   addEventListener("blur", () => {
     held.left = held.right = false;
+    pressedButtons.forEach((code) => sendButton(buttons[code], "up"));
+    pressedButtons.clear();
     setBrake(true);
   });
 
-  console.log("키보드 조작 켜짐: Space=브레이크, ←→ 누르고 있기=핸들(Shift=빠르게), 0=가운데");
+  console.log("키보드 조작 켜짐: Space=브레이크, ←→ 누르고 있기=핸들(Shift=빠르게), 0=가운데, Q/E=왼쪽/오른쪽 미러");
 })();
