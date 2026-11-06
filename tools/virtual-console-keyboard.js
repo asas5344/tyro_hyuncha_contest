@@ -7,8 +7,8 @@
 // 사용법: http://127.0.0.1:8088 열기 → Cmd + Option + J (개발자 콘솔) → 이 파일 내용 붙여넣기 → Enter
 //
 //   Space (누르고 있기)  브레이크 밟기 / 떼면 브레이크 뗌
-//   ← / →               핸들 30도씩 (누르고 있으면 계속 돌아감)
-//   Shift + ← / →       핸들 90도씩
+//   ← / →               누르고 있는 동안 핸들이 부드럽게 계속 돌아감 (초당 약 300도)
+//   Shift + ← / →       더 빨리 돌림 (초당 약 600도)
 //   0                   핸들 가운데로
 //
 // 콘솔 페이지 안의 함수(setSteeringAngle, markLocalControl)와 상태(pedals, vehicle)를 그대로 써서
@@ -28,31 +28,61 @@
     markLocalControl();
   };
 
-  // 오른쪽이 양수 (콘솔 핸들 그림이 시계 방향으로 돌아감)
-  const steerBy = (delta) => setSteeringAngle(vehicle.steering_deg + delta, true);
+  // 오른쪽이 양수 (콘솔 핸들 그림이 시계 방향으로 돌아감).
+  // 콘솔은 작은 각도를 0으로 맞춰 버리기 때문에, 각도를 스크립트가 따로 들고 있다가 매 프레임 보냄.
+  const MAX = 540;
+  let angle = vehicle.steering_deg || 0;
+  const held = { left: false, right: false, fast: false };
+  let last = 0;
+  const tick = (now) => {
+    const dt = last ? Math.min((now - last) / 1000, 0.05) : 0;
+    last = now;
+    const dir = (held.right ? 1 : 0) - (held.left ? 1 : 0);
+    if (dir !== 0) {
+      angle = Math.max(-MAX, Math.min(MAX, angle + dir * (held.fast ? 600 : 300) * dt));
+      setSteeringAngle(angle, true);
+    } else {
+      // 마우스로 콘솔 핸들을 직접 돌린 경우를 따라감
+      if (Math.abs((vehicle.steering_deg || 0) - angle) > 6) angle = vehicle.steering_deg || 0;
+    }
+    requestAnimationFrame(tick);
+  };
+  requestAnimationFrame(tick);
 
   addEventListener("keydown", (e) => {
+    held.fast = e.shiftKey;
     if (e.code === "Space") {
       e.preventDefault();
       if (!e.repeat) setBrake(true);
-    } else if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
+    } else if (e.key === "ArrowLeft") {
       e.preventDefault();
-      const step = e.shiftKey ? 90 : 30;
-      steerBy(e.key === "ArrowLeft" ? -step : step);
+      held.left = true;
+    } else if (e.key === "ArrowRight") {
+      e.preventDefault();
+      held.right = true;
     } else if (e.key === "0") {
+      angle = 0;
       setSteeringAngle(0, true);
     }
   });
 
   addEventListener("keyup", (e) => {
+    held.fast = e.shiftKey;
     if (e.code === "Space") {
       e.preventDefault();
       setBrake(false);
+    } else if (e.key === "ArrowLeft") {
+      held.left = false;
+    } else if (e.key === "ArrowRight") {
+      held.right = false;
     }
   });
 
   // 창 밖으로 포커스가 나가면 키를 뗀 것을 못 받을 수 있으니 안전하게 브레이크를 밟은 상태로 둠
-  addEventListener("blur", () => setBrake(true));
+  addEventListener("blur", () => {
+    held.left = held.right = false;
+    setBrake(true);
+  });
 
-  console.log("키보드 조작 켜짐: Space=브레이크, ←→=핸들(Shift=크게), 0=가운데");
+  console.log("키보드 조작 켜짐: Space=브레이크, ←→ 누르고 있기=핸들(Shift=빠르게), 0=가운데");
 })();
