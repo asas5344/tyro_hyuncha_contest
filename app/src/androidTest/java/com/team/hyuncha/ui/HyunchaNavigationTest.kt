@@ -10,7 +10,10 @@ import androidx.compose.ui.unit.height
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.test.platform.app.InstrumentationRegistry
 import com.team.hyuncha.data.AppTextSize
+import com.team.hyuncha.data.ScoreRecord
+import com.team.hyuncha.data.ScoreRecords
 import com.team.hyuncha.data.UiPreferences
+import com.team.hyuncha.sim.ParkingMode
 import org.junit.After
 import org.junit.Assert.*
 import org.junit.Before
@@ -39,6 +42,29 @@ class HyunchaNavigationTest {
         FileOutputStream(File(context.cacheDir, filename)).use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
     }
     private fun openApp() { compose.setContent { HyunchaApp(vehicle = null, preferences = store) }; settle() }
+
+    @Test fun rankingShowsRecordsByModeInScoreOrder() {
+        val recordsName = "driving_mate_ranking_instrumented_test"
+        context.getSharedPreferences(recordsName, Context.MODE_PRIVATE).edit().clear().commit()
+        val records = ScoreRecords(context, recordsName)
+        records.add(ScoreRecord("아빠", ParkingMode.PERPENDICULAR, "그랜저", 950, "S", 1_700_000_000_000))
+        records.add(ScoreRecord("엄마", ParkingMode.PERPENDICULAR, "아반떼", 981, "S", 1_700_000_100_000))
+        records.add(ScoreRecord("나", ParkingMode.PERPENDICULAR, "투싼", 742, "B", 1_700_000_200_000))
+        compose.setContent { HyunchaApp(vehicle = null, preferences = store, scoreRecords = records) }; settle()
+        compose.onNodeWithTag("open_ranking").performClick(); settle()
+        compose.onNodeWithTag("ranking_screen").assertIsDisplayed()
+        // 점수 높은 순서
+        compose.onNodeWithTag("rank_row_1").assert(hasAnyDescendant(hasText("엄마")))
+        compose.onNodeWithTag("rank_row_2").assert(hasAnyDescendant(hasText("아빠")))
+        compose.onNodeWithTag("rank_row_3").assert(hasAnyDescendant(hasText("나")))
+        capture("ranking_screen", "ranking-perpendicular.png")
+        // 주차 방식마다 따로: 평행 주차는 기록 없음
+        compose.onNodeWithTag("ranking_mode_PARALLEL").performClick(); settle()
+        compose.onNodeWithTag("ranking_empty").assertIsDisplayed()
+        compose.onNodeWithTag("ranking_back").performClick(); settle()
+        compose.onNodeWithTag("home_screen").assertIsDisplayed()
+        context.getSharedPreferences(recordsName, Context.MODE_PRIVATE).edit().clear().commit()
+    }
 
     @Test fun startOpensExistingPerpendicularPracticeAndReturnsHome() {
         openApp()

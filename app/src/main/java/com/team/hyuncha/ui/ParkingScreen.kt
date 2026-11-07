@@ -71,6 +71,10 @@ import androidx.compose.ui.unit.sp
 import com.team.hyuncha.data.CarCamera
 import com.team.hyuncha.data.CarPresets
 import com.team.hyuncha.data.CarSpec
+import com.team.hyuncha.data.RankResult
+import com.team.hyuncha.data.Ranking
+import com.team.hyuncha.data.ScoreRecord
+import com.team.hyuncha.data.ScoreRecords
 import com.team.hyuncha.input.Direction
 import com.team.hyuncha.input.DrivingInput
 import com.team.hyuncha.input.TouchInput
@@ -84,6 +88,8 @@ import com.team.hyuncha.sim.ParkingSimulator
 import com.team.hyuncha.sim.Coach
 import com.team.hyuncha.sim.CoachPlan
 import com.team.hyuncha.sim.SimEvent
+import com.team.hyuncha.sim.ParkingScore
+import com.team.hyuncha.sim.Scoring
 import com.team.hyuncha.sim.SimStatus
 import java.util.Locale
 import kotlinx.coroutines.Dispatchers
@@ -109,6 +115,8 @@ fun ParkingScreen(
     steeringUnit: SteeringUnit = SteeringUnit.STEERING_WHEEL,
     invertSteering: Boolean = true,
     carCamera: CarCamera = CarCamera.REAR_ONLY,
+    driverName: String = "나",
+    records: ScoreRecords? = null,
 ) {
     val car = initialCar
     val currentCar by rememberUpdatedState(car)
@@ -133,6 +141,8 @@ fun ParkingScreen(
     val focus = remember { FocusRequester() }
 
     // 모범 주행: 판이 시작되면 뒤에서 미리 계산 (차량 화면에서 1초 안쪽)
+    // planDone: 계산이 끝났는지 (못 찾아서 null이어도 true). 점수의 주행 시간이 모범 주행에 달려 있어서 랭킹 저장은 이후에
+    var planDone by remember(sim) { mutableStateOf(false) }
     val plan by produceState<CoachPlan?>(initialValue = null, sim) {
         value = withContext(Dispatchers.Default) {
             val started = System.nanoTime()
@@ -141,6 +151,7 @@ fun ParkingScreen(
                 Log.d("CoachTiming", "${sim.map.mode} ${car.name}: ${(System.nanoTime() - started) / 1_000_000}ms, 찾음=${it != null}")
             }
         }
+        planDone = true
     }
 
     // 다시 보기 상태 (새 판이 시작되면 초기화). 내 주행 또는 모범 주행을 재생
@@ -258,6 +269,9 @@ fun ParkingScreen(
                     vehicleStatus = if (input === vehicleInput) vehicleInput?.statusText() else null,
                     replaying = replaying,
                     plan = plan,
+                    planDone = planDone,
+                    driverName = driverName,
+                    records = records,
                     onRestart = ::restart,
                     onReplay = { startReplay(model = false) },
                     onShowModel = { startReplay(model = true) },
@@ -343,6 +357,9 @@ private fun SimHud(
     vehicleStatus: String?,
     replaying: Boolean,
     plan: CoachPlan?,
+    planDone: Boolean,
+    driverName: String,
+    records: ScoreRecords?,
     onRestart: () -> Unit,
     onReplay: () -> Unit,
     onShowModel: () -> Unit,
@@ -352,6 +369,25 @@ private fun SimHud(
     // 결과가 나오면(또는 모범 주행 계산이 끝나면) 한 번만 피드백을 만듦
     val feedback = remember(sim, sim.status, plan) {
         if (sim.status == SimStatus.DRIVING) emptyList() else Coach.feedback(sim, plan)
+    }
+    // 점수: 성공했을 때만. 시간 항목은 같은 주차장의 모범 주행과 비교 (모범 주행은 판 시작 때 미리 계산됨)
+    val score = remember(sim, sim.status, plan) {
+        if (sim.status == SimStatus.PARKED) Scoring.score(sim, plan?.run) else null
+    }
+    // 랭킹: 성공한 판마다 한 번만 저장 (모범 주행 계산이 끝나 점수가 확정된 뒤)
+    var rank by remember(sim) { mutableStateOf<RankResult?>(null) }
+    val ready = score != null && planDone && records != null
+    LaunchedEffect(sim, ready) {
+        if (ready && rank == null) {
+            rank = records!!.add(ScoreRecord(Ranking.cleanName(driverName), sim.map.mode, sim.car.name, score!!.total, score.grade, System.currentTimeMillis()))
+        }
+    }
+    val rankText = when {
+        records == null || score == null -> null
+        rank == null -> "랭킹 계산 중…"
+        rank!!.total == 1 -> "${sim.map.mode.label} 첫 기록! (${Ranking.cleanName(driverName)})"
+        rank!!.isBest -> "${sim.map.mode.label} 신기록! 1위 / ${rank!!.total}개 기록"
+        else -> "${sim.map.mode.label} 랭킹 ${rank!!.rank}위 / ${rank!!.total}개 기록"
     }
     // 다시 보여주기 중에는 결과 카드·안내를 가리지 않도록 숨김
     if (replaying) return
@@ -383,15 +419,12 @@ private fun SimHud(
                 onShowModel = onShowModel,
                 modifier = Modifier.align(Alignment.Center),
             )
-            sim.status == SimStatus.PARKED -> sim.result?.let { r ->
+            sim.status == SimStatus.PARKED -> score?.let { sc ->
                 ResultCard(
                     title = "주차 성공!",
-                    lines = listOf(
-                        "각도 오차 ${fmt(r.angleErrorDeg)}°",
-                        "칸 중앙에서 ${fmt(r.centerOffsetM * 100, 0)}cm",
-                        "전후진 전환 ${r.directionChanges}회",
-                        "걸린 시간 ${fmt(r.elapsedSec, 0)}초",
-                    ),
+                    lines = emptyList(),
+                    score = sc,
+                    rankText = rankText,
                     feedback = feedback,
                     modelReady = plan != null,
                     onRestart = onRestart,
@@ -489,26 +522,36 @@ private fun ResultCard(
     title: String,
     lines: List<String>,
     feedback: List<String>,
+    score: ParkingScore? = null,
+    rankText: String? = null,
     modelReady: Boolean,
     onRestart: () -> Unit,
     onReplay: () -> Unit,
     onShowModel: () -> Unit,
     modifier: Modifier,
 ) {
-    Card(modifier.widthIn(min = 420.dp, max = 640.dp)) {
-        Column(Modifier.padding(28.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+    Card(modifier.widthIn(min = 420.dp, max = if (score != null) 920.dp else 640.dp)) {
+        Column(
+            Modifier.padding(28.dp).verticalScroll(rememberScrollState()),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
             Text(title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
             Spacer(Modifier.height(12.dp))
             lines.forEach { Text(it, textAlign = TextAlign.Center) }
-            // 코치 피드백: 무엇이 문제였는지, 어떻게 고치면 되는지
-            if (feedback.isNotEmpty()) {
-                Spacer(Modifier.height(16.dp))
-                Surface(color = MaterialTheme.colorScheme.surfaceVariant, shape = RoundedCornerShape(12.dp)) {
-                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Text("코치 피드백", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
-                        feedback.forEach { Text("· $it") }
-                    }
+            if (score != null) {
+                ScoreHeader(score)
+                if (rankText != null) {
+                    Text(rankText, Modifier.padding(top = 8.dp).testTag("rank_text"), color = MaterialTheme.colorScheme.primary,
+                        style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                 }
+                Spacer(Modifier.height(16.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(20.dp)) {
+                    ScoreBreakdown(score, Modifier.weight(1f))
+                    if (feedback.isNotEmpty()) CoachFeedback(feedback, Modifier.weight(0.8f))
+                }
+            } else if (feedback.isNotEmpty()) {
+                Spacer(Modifier.height(16.dp))
+                CoachFeedback(feedback, Modifier)
             }
             Spacer(Modifier.height(20.dp))
             // 버튼 글자가 두 줄로 꺾이지 않게 한 줄로 고정
@@ -519,6 +562,17 @@ private fun ResultCard(
                 OutlinedButton(onClick = onReplay) { Text("내 주행 보기", maxLines = 1, softWrap = false) }
                 OutlinedButton(onClick = onRestart) { Text("다시 하기", maxLines = 1, softWrap = false) }
             }
+        }
+    }
+}
+
+/** 코치 피드백: 무엇이 문제였는지, 어떻게 고치면 되는지 */
+@Composable
+private fun CoachFeedback(feedback: List<String>, modifier: Modifier) {
+    Surface(color = MaterialTheme.colorScheme.surfaceVariant, shape = RoundedCornerShape(12.dp), modifier = modifier) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text("코치 피드백", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+            feedback.forEach { Text("· $it") }
         }
     }
 }
