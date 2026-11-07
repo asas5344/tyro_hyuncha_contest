@@ -40,6 +40,12 @@ object LookButtons {
     private var pressed: Int? = null   // 지금 누르고 있는 버튼 (짝이 없는 "뗌" 신호는 무시)
     private var before = LookSide.FRONT
 
+    /** 음성 명령 등으로 바로 그쪽을 보게 함 */
+    fun lookAt(target: LookSide) {
+        side = target
+        pressed = null
+    }
+
     /** @return 버튼을 가져갔으면 true (다른 앱으로 안 넘어감) */
     fun onKey(event: KeyEvent): Boolean {
         val dir = when (event.keyCode) {

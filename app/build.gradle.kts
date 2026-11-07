@@ -46,6 +46,7 @@ dependencies {
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation("ai.pleos.playground:Vehicle:2.3.2")
+    implementation("ai.pleos.playground:SpeechToText:3.3.1")   // 음성 명령 (차 안 엔진, 앱 등록 불필요)
     testImplementation(libs.junit)
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)

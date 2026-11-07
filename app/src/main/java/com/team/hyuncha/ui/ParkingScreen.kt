@@ -80,6 +80,14 @@ import com.team.hyuncha.input.DrivingInput
 import com.team.hyuncha.input.TouchInput
 import com.team.hyuncha.input.SteeringUnit
 import com.team.hyuncha.input.VehicleInput
+import com.team.hyuncha.input.LookButtons
+import com.team.hyuncha.input.LookSide
+import com.team.hyuncha.input.VoiceCommand
+import com.team.hyuncha.input.VoiceCommands
+import com.team.hyuncha.input.VoiceInput
+import com.team.hyuncha.input.VoiceKey
+import androidx.compose.ui.platform.LocalContext
+import kotlinx.coroutines.delay
 import com.team.hyuncha.safety.LockState
 import com.team.hyuncha.safety.SafetyLock
 import com.team.hyuncha.sim.ParkingMaps
@@ -211,6 +219,47 @@ fun ParkingScreen(
         vehicleInput?.reset()
     }
 
+    // 음성 명령 (Pleos SpeechToText). 화면을 떠나면 해제
+    val context = LocalContext.current
+    val voice = remember { VoiceInput(context) }
+    var voiceMessage by remember { mutableStateOf<String?>(null) }   // 알아들은 결과를 잠깐 보여줌
+    val onVoice by rememberUpdatedState { cmd: VoiceCommand?, said: String ->
+        val finished = sim.status != SimStatus.DRIVING
+        voiceMessage = when (cmd) {
+            null -> if (said.isBlank()) "잘 못 들었어요. 다시 말해 주세요" else "\"$said\" — 모르는 명령이에요"
+            VoiceCommand.SHOW_MODEL, VoiceCommand.SHOW_MINE ->
+                if (!finished) "주차가 끝나면 볼 수 있어요"
+                else if (cmd == VoiceCommand.SHOW_MODEL && plan == null) "모범 주행을 계산하고 있어요"
+                else { startReplay(model = cmd == VoiceCommand.SHOW_MODEL); "\"$said\" → ${cmd.label}" }
+            VoiceCommand.CLOSE -> { replaying = false; "\"$said\" → ${cmd.label}" }
+            else -> {
+                when (cmd) {
+                    VoiceCommand.FORWARD -> input.direction = Direction.FORWARD
+                    VoiceCommand.REVERSE -> input.direction = Direction.REVERSE
+                    VoiceCommand.RESTART -> restart()
+                    VoiceCommand.LOOK_LEFT -> { firstPerson = true; LookButtons.lookAt(LookSide.LEFT) }
+                    VoiceCommand.LOOK_RIGHT -> { firstPerson = true; LookButtons.lookAt(LookSide.RIGHT) }
+                    VoiceCommand.LOOK_FRONT -> LookButtons.lookAt(LookSide.FRONT)
+                    VoiceCommand.TOP_VIEW -> firstPerson = false
+                    VoiceCommand.DRIVER_VIEW -> firstPerson = true
+                    else -> Unit
+                }
+                "\"$said\" → ${cmd.label}"
+            }
+        }
+    }
+    DisposableEffect(voice) {
+        voice.onCommand = { cmd, said -> onVoice(cmd, said) }
+        VoiceKey.onPress = { voice.toggle() }     // 핸들의 음성 버튼으로도 시작
+        onDispose {
+            VoiceKey.onPress = null
+            voice.release()
+        }
+    }
+    LaunchedEffect(voiceMessage) {
+        if (voiceMessage != null) { delay(3000); voiceMessage = null }
+    }
+
     BoxWithConstraints(modifier.fillMaxSize()) {
         val panelWidth = minOf(maxWidth * 0.48f, 440.dp * (LocalDensity.current.fontScale * LocalAppTextScale.current).coerceAtLeast(1f))
         Row(
@@ -301,20 +350,24 @@ fun ParkingScreen(
                             .padding(24.dp),
                     )
                 }
-                // 시점 바꾸기 (왼쪽 아래)
+                // 시점 바꾸기 + 음성 명령 (왼쪽 아래)
                 if (!replaying) {
-                    OutlinedButton(
-                        onClick = { firstPerson = !firstPerson },
-                        colors = ButtonDefaults.outlinedButtonColors(containerColor = Color.Black.copy(alpha = 0.55f)),
-                        modifier = Modifier
-                            .align(Alignment.BottomStart)
-                            .padding(24.dp)
-                            .height(64.dp)
-                            .testTag("toggle_view"),
+                    Row(
+                        Modifier.align(Alignment.BottomStart).padding(24.dp),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
                     ) {
-                        Text(if (firstPerson) "탑뷰로 보기" else "운전석으로 보기", color = Color.White, fontSize = 22.sp * LocalAppTextScale.current)
+                        OutlinedButton(
+                            onClick = { firstPerson = !firstPerson },
+                            colors = ButtonDefaults.outlinedButtonColors(containerColor = Color.Black.copy(alpha = 0.55f)),
+                            modifier = Modifier.height(64.dp).testTag("toggle_view"),
+                        ) {
+                            Text(if (firstPerson) "탑뷰로 보기" else "운전석으로 보기", color = Color.White, fontSize = 22.sp * LocalAppTextScale.current)
+                        }
+                        VoiceButton(voice, Modifier.height(64.dp))
                     }
                 }
+                // 음성 명령: 듣는 중이면 들린 말, 끝나면 결과를 위쪽 가운데에 잠깐 보여줌
+                VoiceBubble(voice, voiceMessage, Modifier.align(Alignment.TopCenter).padding(top = 72.dp))
                 // 실제 차량 모드: 메뉴 대신 전진/후진과 다시 하기만 작게 띄움 (기어는 P 고정이라 방향은 앱에서 고름)
                 if (input === vehicleInput && !replaying) {
                     DirectionBar(
@@ -437,6 +490,53 @@ private fun SimHud(
                 "브레이크를 한 번 밟으면 시작해요.\n브레이크를 떼면 천천히 움직여요.",
                 Modifier.align(Alignment.BottomCenter),
             )
+        }
+    }
+}
+
+/** 음성 명령 버튼: 누르면 한 번 듣고, 듣는 중에 다시 누르면 그만 들음 */
+@Composable
+private fun VoiceButton(voice: VoiceInput, modifier: Modifier) {
+    val listening = voice.state == VoiceInput.State.LISTENING
+    val usable = voice.state == VoiceInput.State.READY || listening
+    OutlinedButton(
+        onClick = { voice.toggle() },
+        enabled = usable,
+        colors = ButtonDefaults.outlinedButtonColors(
+            containerColor = if (listening) MaterialTheme.colorScheme.primary else Color.Black.copy(alpha = 0.55f),
+            disabledContainerColor = Color.Black.copy(alpha = 0.35f),
+        ),
+        modifier = modifier.testTag("voice_button"),
+    ) {
+        val color = if (usable) Color.White else Color.White.copy(alpha = 0.4f)
+        OutlineIcon("mic", Modifier.size(28.dp), color)
+        Spacer(Modifier.width(8.dp))
+        Text(
+            when (voice.state) {
+                VoiceInput.State.LISTENING -> "듣는 중…"
+                VoiceInput.State.PREPARING -> "음성 준비 중"
+                VoiceInput.State.UNAVAILABLE -> "음성 사용 불가"
+                VoiceInput.State.READY -> "음성 명령"
+            },
+            color = color, fontSize = 22.sp * LocalAppTextScale.current,
+        )
+    }
+}
+
+/** 듣는 중: 들린 말과 예시 / 끝난 뒤: 알아들은 결과 */
+@Composable
+private fun VoiceBubble(voice: VoiceInput, message: String?, modifier: Modifier) {
+    val listening = voice.state == VoiceInput.State.LISTENING
+    if (!listening && message == null) return
+    val textSize = 22.sp * LocalAppTextScale.current
+    Surface(color = Color.Black.copy(alpha = 0.75f), shape = RoundedCornerShape(20.dp), modifier = modifier.testTag("voice_bubble")) {
+        Column(Modifier.padding(horizontal = 24.dp, vertical = 14.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            if (listening) {
+                Text(if (voice.heard.isBlank()) "듣고 있어요…" else "\"${voice.heard}\"", color = Color.White, fontSize = textSize, fontWeight = FontWeight.Bold)
+                Text("예: " + VoiceCommands.examples.joinToString(" · ") { "\"$it\"" }, color = Color.White.copy(alpha = 0.7f), fontSize = textSize * 0.75f)
+            } else if (message != null) {
+                Text(message, color = Color(0xFF8EE6B1), fontSize = textSize, fontWeight = FontWeight.Bold)
+            }
         }
     }
 }
