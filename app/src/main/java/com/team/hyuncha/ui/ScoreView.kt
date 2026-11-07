@@ -24,6 +24,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.team.hyuncha.sim.ParkingScore
+import com.team.hyuncha.sim.Scoring
 
 /** 등급별 색: S 금색, A 초록, B 파랑, C 주황, D 빨강 */
 private fun gradeColor(grade: String) = when (grade) {
@@ -46,7 +47,7 @@ fun ScoreHeader(score: ParkingScore) {
         }
         Row(verticalAlignment = Alignment.Bottom) {
             Text("${score.total}", fontSize = 52.sp, fontWeight = FontWeight.Bold, modifier = Modifier.testTag("score_total"))
-            Text(" / 100점", fontSize = 20.sp, modifier = Modifier.padding(bottom = 10.dp))
+            Text(" / ${Scoring.MAX_TOTAL}점", fontSize = 20.sp, modifier = Modifier.padding(bottom = 10.dp))
         }
     }
 }
@@ -73,7 +74,7 @@ fun ScoreBreakdown(score: ParkingScore, modifier: Modifier = Modifier) {
                         modifier = Modifier.weight(1f).height(10.dp),
                         strokeCap = androidx.compose.ui.graphics.StrokeCap.Round,
                     )
-                    Text("${item.points}/${item.max}", modifier = Modifier.width(96.dp).padding(start = 12.dp), fontWeight = FontWeight.Bold,
+                    Text("${item.points}/${item.max}", modifier = Modifier.width(120.dp).padding(start = 12.dp), fontWeight = FontWeight.Bold,
                         maxLines = 1, softWrap = false)
                 }
                 Text(item.detail, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,

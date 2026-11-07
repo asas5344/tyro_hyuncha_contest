@@ -44,46 +44,60 @@ class ScoreTest {
     }
 
     @Test
-    fun 칸_가운데에_반듯하게_넣으면_100점_S등급() {
+    fun 칸_가운데에_반듯하게_넣으면_1000점_S등급() {
         val score = Scoring.score(parkAt(ParkingMaps.perpendicular()), null)!!
-        assertEquals(100, score.total)
+        assertEquals(1000, score.total)
         assertEquals("S", score.grade)
-        assertEquals(100, score.items.sumOf { it.max })
+        assertEquals(Scoring.MAX_TOTAL, score.items.sumOf { it.max })
+        assertTrue("안전 거리는 뺐음", score.items.none { it.name == "안전 거리" })
+    }
+
+    @Test
+    fun 조금이라도_더_정확하면_점수가_더_높다() {
+        val map = ParkingMaps.perpendicular()
+        val a = Scoring.score(parkAt(map, headingOffset = Math.toRadians(0.3)), null)!!
+        val b = Scoring.score(parkAt(map, headingOffset = Math.toRadians(0.6)), null)!!
+        assertTrue("0.3° ${a.total} > 0.6° ${b.total}", a.total > b.total)
+        val c = Scoring.score(parkAt(map, across = 0.05), null)!!
+        val d = Scoring.score(parkAt(map, across = 0.10), null)!!
+        assertTrue("5cm ${c.total} > 10cm ${d.total}", c.total > d.total)
     }
 
     @Test
     fun 비뚤수록_각도_점수가_깎인다() {
         val straight = Scoring.score(parkAt(ParkingMaps.perpendicular()), null)!!.points("각도 정렬")
         val tilted = Scoring.score(parkAt(ParkingMaps.perpendicular(), headingOffset = Math.toRadians(4.0)), null)!!.points("각도 정렬")
-        assertEquals(25, straight)
-        assertTrue("4°면 감점: $tilted", tilted in 6..20)
+        assertEquals(300, straight)
+        assertTrue("4°면 감점: $tilted", tilted in 100..250)
     }
 
     @Test
-    fun 평행주차는_연석_쪽으로_붙으면_감점_없고_도로_쪽으로_나오면_감점() {
+    fun 평행주차는_연석에_가까울수록_점수가_높다() {
         val map = ParkingMaps.parallel()
         val margin = map.slot.halfWidth - CarPresets.GRANDEUR.widthM / 2
         val toCurb = Scoring.score(parkAt(map, across = margin * 0.9), null)!!.points("좌우 위치")
         val toRoad = Scoring.score(parkAt(map, across = -margin * 0.9), null)!!.points("좌우 위치")
-        assertEquals(15, toCurb)
-        assertTrue("도로 쪽으로 나오면 감점: $toRoad", toRoad < 10)
+        assertTrue("연석에 붙으면 거의 만점: $toCurb", toCurb >= 195)
+        assertTrue("도로 쪽으로 나오면 감점: $toRoad", toRoad < 150)
     }
 
     @Test
     fun 등급_기준() {
-        assertEquals("S", Scoring.grade(95))
-        assertEquals("A", Scoring.grade(94))
-        assertEquals("A", Scoring.grade(85))
-        assertEquals("B", Scoring.grade(70))
-        assertEquals("C", Scoring.grade(55))
-        assertEquals("D", Scoring.grade(54))
+        assertEquals("S", Scoring.grade(950))
+        assertEquals("A", Scoring.grade(949))
+        assertEquals("A", Scoring.grade(850))
+        assertEquals("B", Scoring.grade(700))
+        assertEquals("C", Scoring.grade(550))
+        assertEquals("D", Scoring.grade(549))
     }
 
     @Test
-    fun 사각형_사이_거리() {
-        val a = OrientedRect(Vec2(0.0, 0.0), 1.0, 1.0, 0.0)
-        assertEquals(1.0, Scoring.distance(a, OrientedRect(Vec2(3.0, 0.0), 1.0, 1.0, 0.0)), 1e-9)
-        assertEquals(0.0, Scoring.distance(a, OrientedRect(Vec2(1.5, 0.0), 1.0, 1.0, 0.0)), 1e-9)
+    fun 꺾은선_점수() {
+        val pts = listOf(0.0 to 300.0, 1.0 to 285.0, 7.0 to 60.0)
+        assertEquals(300.0, Scoring.curve(-1.0, pts), 1e-9)
+        assertEquals(292.5, Scoring.curve(0.5, pts), 1e-9)
+        assertEquals(172.5, Scoring.curve(4.0, pts), 1e-9)
+        assertEquals(60.0, Scoring.curve(9.0, pts), 1e-9)
     }
 
     /** 모범 주행은 어느 모드·차종이든 A 이상이어야 기준이 너무 깐깐하지 않은 것 */
@@ -92,7 +106,7 @@ class ScoreTest {
         for (mode in ParkingMode.entries) for (car in CarPresets.all) {
             val plan = Coach.solve(car, ParkingMaps.random(mode, kotlin.random.Random(1))) ?: continue
             val score = Scoring.score(plan.run, plan.run)!!
-            assertTrue("$mode ${car.name}: ${score.total}점", score.total >= 85)
+            assertTrue("$mode ${car.name}: ${score.total}점", score.total >= 850)
         }
     }
 
@@ -116,6 +130,6 @@ class ScoreTest {
     @Test
     fun 모범_주행과_같으면_주행_시간_만점() {
         val plan = Coach.solve(CarPresets.GRANDEUR, ParkingMaps.perpendicular())!!
-        assertEquals(15, Scoring.score(plan.run, plan.run)!!.points("주행 시간"))
+        assertEquals(200, Scoring.score(plan.run, plan.run)!!.points("주행 시간"))
     }
 }
