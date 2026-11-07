@@ -84,6 +84,8 @@ import com.team.hyuncha.sim.ParkingSimulator
 import com.team.hyuncha.sim.Coach
 import com.team.hyuncha.sim.CoachPlan
 import com.team.hyuncha.sim.SimEvent
+import com.team.hyuncha.sim.ParkingScore
+import com.team.hyuncha.sim.Scoring
 import com.team.hyuncha.sim.SimStatus
 import java.util.Locale
 import kotlinx.coroutines.Dispatchers
@@ -353,6 +355,10 @@ private fun SimHud(
     val feedback = remember(sim, sim.status, plan) {
         if (sim.status == SimStatus.DRIVING) emptyList() else Coach.feedback(sim, plan)
     }
+    // 점수: 성공했을 때만. 시간 항목은 같은 주차장의 모범 주행과 비교 (모범 주행은 판 시작 때 미리 계산됨)
+    val score = remember(sim, sim.status, plan) {
+        if (sim.status == SimStatus.PARKED) Scoring.score(sim, plan?.run) else null
+    }
     // 다시 보여주기 중에는 결과 카드·안내를 가리지 않도록 숨김
     if (replaying) return
     Box(modifier.padding(16.dp)) {
@@ -383,15 +389,11 @@ private fun SimHud(
                 onShowModel = onShowModel,
                 modifier = Modifier.align(Alignment.Center),
             )
-            sim.status == SimStatus.PARKED -> sim.result?.let { r ->
+            sim.status == SimStatus.PARKED -> score?.let { sc ->
                 ResultCard(
                     title = "주차 성공!",
-                    lines = listOf(
-                        "각도 오차 ${fmt(r.angleErrorDeg)}°",
-                        "칸 중앙에서 ${fmt(r.centerOffsetM * 100, 0)}cm",
-                        "전후진 전환 ${r.directionChanges}회",
-                        "걸린 시간 ${fmt(r.elapsedSec, 0)}초",
-                    ),
+                    lines = emptyList(),
+                    score = sc,
                     feedback = feedback,
                     modelReady = plan != null,
                     onRestart = onRestart,
@@ -489,26 +491,31 @@ private fun ResultCard(
     title: String,
     lines: List<String>,
     feedback: List<String>,
+    score: ParkingScore? = null,
     modelReady: Boolean,
     onRestart: () -> Unit,
     onReplay: () -> Unit,
     onShowModel: () -> Unit,
     modifier: Modifier,
 ) {
-    Card(modifier.widthIn(min = 420.dp, max = 640.dp)) {
-        Column(Modifier.padding(28.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+    Card(modifier.widthIn(min = 420.dp, max = if (score != null) 920.dp else 640.dp)) {
+        Column(
+            Modifier.padding(28.dp).verticalScroll(rememberScrollState()),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
             Text(title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
             Spacer(Modifier.height(12.dp))
             lines.forEach { Text(it, textAlign = TextAlign.Center) }
-            // 코치 피드백: 무엇이 문제였는지, 어떻게 고치면 되는지
-            if (feedback.isNotEmpty()) {
+            if (score != null) {
+                ScoreHeader(score)
                 Spacer(Modifier.height(16.dp))
-                Surface(color = MaterialTheme.colorScheme.surfaceVariant, shape = RoundedCornerShape(12.dp)) {
-                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Text("코치 피드백", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
-                        feedback.forEach { Text("· $it") }
-                    }
+                Row(horizontalArrangement = Arrangement.spacedBy(20.dp)) {
+                    ScoreBreakdown(score, Modifier.weight(1f))
+                    if (feedback.isNotEmpty()) CoachFeedback(feedback, Modifier.weight(0.8f))
                 }
+            } else if (feedback.isNotEmpty()) {
+                Spacer(Modifier.height(16.dp))
+                CoachFeedback(feedback, Modifier)
             }
             Spacer(Modifier.height(20.dp))
             // 버튼 글자가 두 줄로 꺾이지 않게 한 줄로 고정
@@ -519,6 +526,17 @@ private fun ResultCard(
                 OutlinedButton(onClick = onReplay) { Text("내 주행 보기", maxLines = 1, softWrap = false) }
                 OutlinedButton(onClick = onRestart) { Text("다시 하기", maxLines = 1, softWrap = false) }
             }
+        }
+    }
+}
+
+/** 코치 피드백: 무엇이 문제였는지, 어떻게 고치면 되는지 */
+@Composable
+private fun CoachFeedback(feedback: List<String>, modifier: Modifier) {
+    Surface(color = MaterialTheme.colorScheme.surfaceVariant, shape = RoundedCornerShape(12.dp), modifier = modifier) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text("코치 피드백", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+            feedback.forEach { Text("· $it") }
         }
     }
 }
