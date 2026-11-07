@@ -27,7 +27,7 @@ import com.team.hyuncha.sim.ParkingScore
 import com.team.hyuncha.sim.Scoring
 
 /** 등급별 색: S 금색, A 초록, B 파랑, C 주황, D 빨강 */
-private fun gradeColor(grade: String) = when (grade) {
+internal fun gradeColor(grade: String) = when (grade) {
     "S" -> Color(0xFFFFC83D)
     "A" -> Color(0xFF4CD08A)
     "B" -> Color(0xFF4FA3F7)

@@ -71,6 +71,10 @@ import androidx.compose.ui.unit.sp
 import com.team.hyuncha.data.CarCamera
 import com.team.hyuncha.data.CarPresets
 import com.team.hyuncha.data.CarSpec
+import com.team.hyuncha.data.RankResult
+import com.team.hyuncha.data.Ranking
+import com.team.hyuncha.data.ScoreRecord
+import com.team.hyuncha.data.ScoreRecords
 import com.team.hyuncha.input.Direction
 import com.team.hyuncha.input.DrivingInput
 import com.team.hyuncha.input.TouchInput
@@ -111,6 +115,8 @@ fun ParkingScreen(
     steeringUnit: SteeringUnit = SteeringUnit.STEERING_WHEEL,
     invertSteering: Boolean = true,
     carCamera: CarCamera = CarCamera.REAR_ONLY,
+    driverName: String = "나",
+    records: ScoreRecords? = null,
 ) {
     val car = initialCar
     val currentCar by rememberUpdatedState(car)
@@ -135,6 +141,8 @@ fun ParkingScreen(
     val focus = remember { FocusRequester() }
 
     // 모범 주행: 판이 시작되면 뒤에서 미리 계산 (차량 화면에서 1초 안쪽)
+    // planDone: 계산이 끝났는지 (못 찾아서 null이어도 true). 점수의 주행 시간이 모범 주행에 달려 있어서 랭킹 저장은 이후에
+    var planDone by remember(sim) { mutableStateOf(false) }
     val plan by produceState<CoachPlan?>(initialValue = null, sim) {
         value = withContext(Dispatchers.Default) {
             val started = System.nanoTime()
@@ -143,6 +151,7 @@ fun ParkingScreen(
                 Log.d("CoachTiming", "${sim.map.mode} ${car.name}: ${(System.nanoTime() - started) / 1_000_000}ms, 찾음=${it != null}")
             }
         }
+        planDone = true
     }
 
     // 다시 보기 상태 (새 판이 시작되면 초기화). 내 주행 또는 모범 주행을 재생
@@ -260,6 +269,9 @@ fun ParkingScreen(
                     vehicleStatus = if (input === vehicleInput) vehicleInput?.statusText() else null,
                     replaying = replaying,
                     plan = plan,
+                    planDone = planDone,
+                    driverName = driverName,
+                    records = records,
                     onRestart = ::restart,
                     onReplay = { startReplay(model = false) },
                     onShowModel = { startReplay(model = true) },
@@ -345,6 +357,9 @@ private fun SimHud(
     vehicleStatus: String?,
     replaying: Boolean,
     plan: CoachPlan?,
+    planDone: Boolean,
+    driverName: String,
+    records: ScoreRecords?,
     onRestart: () -> Unit,
     onReplay: () -> Unit,
     onShowModel: () -> Unit,
@@ -358,6 +373,21 @@ private fun SimHud(
     // 점수: 성공했을 때만. 시간 항목은 같은 주차장의 모범 주행과 비교 (모범 주행은 판 시작 때 미리 계산됨)
     val score = remember(sim, sim.status, plan) {
         if (sim.status == SimStatus.PARKED) Scoring.score(sim, plan?.run) else null
+    }
+    // 랭킹: 성공한 판마다 한 번만 저장 (모범 주행 계산이 끝나 점수가 확정된 뒤)
+    var rank by remember(sim) { mutableStateOf<RankResult?>(null) }
+    val ready = score != null && planDone && records != null
+    LaunchedEffect(sim, ready) {
+        if (ready && rank == null) {
+            rank = records!!.add(ScoreRecord(Ranking.cleanName(driverName), sim.map.mode, sim.car.name, score!!.total, score.grade, System.currentTimeMillis()))
+        }
+    }
+    val rankText = when {
+        records == null || score == null -> null
+        rank == null -> "랭킹 계산 중…"
+        rank!!.total == 1 -> "${sim.map.mode.label} 첫 기록! (${Ranking.cleanName(driverName)})"
+        rank!!.isBest -> "${sim.map.mode.label} 신기록! 1위 / ${rank!!.total}개 기록"
+        else -> "${sim.map.mode.label} 랭킹 ${rank!!.rank}위 / ${rank!!.total}개 기록"
     }
     // 다시 보여주기 중에는 결과 카드·안내를 가리지 않도록 숨김
     if (replaying) return
@@ -394,6 +424,7 @@ private fun SimHud(
                     title = "주차 성공!",
                     lines = emptyList(),
                     score = sc,
+                    rankText = rankText,
                     feedback = feedback,
                     modelReady = plan != null,
                     onRestart = onRestart,
@@ -492,6 +523,7 @@ private fun ResultCard(
     lines: List<String>,
     feedback: List<String>,
     score: ParkingScore? = null,
+    rankText: String? = null,
     modelReady: Boolean,
     onRestart: () -> Unit,
     onReplay: () -> Unit,
@@ -508,6 +540,10 @@ private fun ResultCard(
             lines.forEach { Text(it, textAlign = TextAlign.Center) }
             if (score != null) {
                 ScoreHeader(score)
+                if (rankText != null) {
+                    Text(rankText, Modifier.padding(top = 8.dp).testTag("rank_text"), color = MaterialTheme.colorScheme.primary,
+                        style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                }
                 Spacer(Modifier.height(16.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(20.dp)) {
                     ScoreBreakdown(score, Modifier.weight(1f))

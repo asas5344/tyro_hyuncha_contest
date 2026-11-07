@@ -89,6 +89,18 @@ internal fun OutlineIcon(kind: String, modifier: Modifier = Modifier, color: Col
                 drawCircle(color,3*u,androidx.compose.ui.geometry.Offset(22*u,16*u))
                 drawCircle(color,3*u,androidx.compose.ui.geometry.Offset(13*u,24*u))
             }
+            "trophy" -> {
+                // 컵
+                line(9f,5f,23f,5f,23f,10f)
+                path.cubicTo(23f*u,16f*u,19f*u,19f*u,16f*u,19f*u)
+                path.cubicTo(13f*u,19f*u,9f*u,16f*u,9f*u,10f*u)
+                path.close()
+                // 손잡이
+                line(9f,7f,5f,7f,5f,9f); path.cubicTo(5f*u,12f*u,7f*u,14f*u,9.5f*u,14f*u)
+                line(23f,7f,27f,7f,27f,9f); path.cubicTo(27f*u,12f*u,25f*u,14f*u,22.5f*u,14f*u)
+                // 기둥과 받침
+                line(16f,19f,16f,24f); line(11f,27f,21f,27f); line(12f,24f,20f,24f)
+            }
             "check" -> line(5f,16f,12f,23f,27f,8f)
             "chevron" -> line(12f,6f,22f,16f,12f,26f)
             "back" -> { line(26f,16f,5f,16f); line(14f,7f,5f,16f,14f,25f) }
