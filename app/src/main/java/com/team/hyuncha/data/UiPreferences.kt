@@ -22,6 +22,9 @@ class UiPreferences(context: Context, name: String = "driving_mate_ui") {
     var textSize: AppTextSize
         get() = AppTextSize.entries.firstOrNull { it.name == prefs.getString("text_size", null) } ?: AppTextSize.STANDARD
         set(value) { prefs.edit().putString("text_size", value.name).apply() }
+    var carCamera: CarCamera
+        get() = CarCamera.entries.firstOrNull { it.name == prefs.getString("car_camera", null) } ?: CarCamera.REAR_ONLY
+        set(value) { prefs.edit().putString("car_camera", value.name).apply() }
     var steeringUnit: SteeringUnit
         get() = SteeringUnit.entries.firstOrNull { it.name == prefs.getString("steering_unit", null) } ?: SteeringUnit.STEERING_WHEEL
         set(value) { prefs.edit().putString("steering_unit", value.name).apply() }

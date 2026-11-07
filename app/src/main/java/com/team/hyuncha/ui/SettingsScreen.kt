@@ -14,6 +14,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.unit.dp
 import com.team.hyuncha.data.AppTextSize
+import com.team.hyuncha.data.CarCamera
 import com.team.hyuncha.input.SteeringUnit
 
 @Composable
@@ -21,7 +22,8 @@ fun SettingsScreen(textSize: AppTextSize, dark: Boolean,
                    onTextSizeChange: (AppTextSize) -> Unit,
                    onDarkThemeChange: (Boolean) -> Unit, onBack: () -> Unit,
                    steeringUnit: SteeringUnit = SteeringUnit.STEERING_WHEEL, invertSteering: Boolean = true,
-                   onSteeringUnitChange: (SteeringUnit) -> Unit = {}, onInvertSteeringChange: (Boolean) -> Unit = {}) {
+                   onSteeringUnitChange: (SteeringUnit) -> Unit = {}, onInvertSteeringChange: (Boolean) -> Unit = {},
+                   carCamera: CarCamera = CarCamera.REAR_ONLY, onCarCameraChange: (CarCamera) -> Unit = {}) {
     val c = MaterialTheme.colorScheme
     Column(Modifier.fillMaxSize().testTag("settings_screen").verticalScroll(rememberScrollState()).padding(40.dp),
         verticalArrangement = Arrangement.spacedBy(24.dp)) {
@@ -48,6 +50,16 @@ fun SettingsScreen(textSize: AppTextSize, dark: Boolean,
         Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
             SettingChoice("어둡게", dark, Modifier.weight(1f).testTag("theme_dark")) { onDarkThemeChange(true) }
             SettingChoice("밝게", !dark, Modifier.weight(1f).testTag("theme_light")) { onDarkThemeChange(false) }
+        }
+
+        // 내 차에 달린 카메라: 운전석 시점에서 후진할 때 차량 화면에 무엇이 뜨는지
+        Text("내 차 카메라", style = MaterialTheme.typography.headlineMedium)
+        Text("운전석 시점에서 후진하면, 내 차와 같은 카메라 화면이 떠요.",
+            color = c.onSurfaceVariant, style = MaterialTheme.typography.bodyLarge)
+        Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+            CarCamera.entries.forEach { cam ->
+                SettingChoice(cam.label, cam == carCamera, Modifier.weight(1f).testTag("camera_${cam.name}")) { onCarCameraChange(cam) }
+            }
         }
 
         // 실차 점검용: SDK 조향값을 어떻게 읽을지. 에뮬레이터 기준 기본값이 실제 차와 다를 때만 바꿈

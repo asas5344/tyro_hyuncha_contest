@@ -11,6 +11,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import com.team.hyuncha.data.AppTextSize
+import com.team.hyuncha.data.CarCamera
 import com.team.hyuncha.data.CarPresets
 import com.team.hyuncha.data.UiPreferences
 import com.team.hyuncha.input.SteeringUnit
@@ -26,6 +27,8 @@ fun HyunchaApp(vehicle: Vehicle?, preferences: UiPreferences? = null) {
     var dark by rememberSaveable { mutableStateOf(store.darkTheme) }
     var textSizeName by rememberSaveable { mutableStateOf(store.textSize.name) }
     var steeringUnitName by rememberSaveable { mutableStateOf(store.steeringUnit.name) }
+    var carCameraName by rememberSaveable { mutableStateOf(store.carCamera.name) }
+    val carCamera = CarCamera.valueOf(carCameraName)
     var invertSteering by rememberSaveable { mutableStateOf(store.invertSteering) }
     val steeringUnit = SteeringUnit.valueOf(steeringUnitName)
     var screen by rememberSaveable { mutableStateOf("home") }
@@ -47,7 +50,7 @@ fun HyunchaApp(vehicle: Vehicle?, preferences: UiPreferences? = null) {
                             AppButton("홈으로", onClick = { screen = "home" },
                                 modifier = Modifier.padding(16.dp).testTag("back_home"), icon = "back")
                             ParkingScreen(vehicle, Modifier.weight(1f), initialCar = selectedCar, parkingMode = parkingMode,
-                                steeringUnit = steeringUnit, invertSteering = invertSteering)
+                                steeringUnit = steeringUnit, invertSteering = invertSteering, carCamera = carCamera)
                         }
                         "settings" -> SettingsScreen(textSize, dark,
                             onTextSizeChange = { textSizeName = it.name; store.textSize = it },
@@ -55,6 +58,8 @@ fun HyunchaApp(vehicle: Vehicle?, preferences: UiPreferences? = null) {
                             steeringUnit = steeringUnit, invertSteering = invertSteering,
                             onSteeringUnitChange = { steeringUnitName = it.name; store.steeringUnit = it },
                             onInvertSteeringChange = { invertSteering = it; store.invertSteering = it },
+                            carCamera = carCamera,
+                            onCarCameraChange = { carCameraName = it.name; store.carCamera = it },
                             onBack = { screen = "home" })
                         else -> HomeScreen(selectedCar, onChooseCar = { choosingCar = true },
                             onSettings = { screen = "settings" }, onStart = { screen = "parking" },
