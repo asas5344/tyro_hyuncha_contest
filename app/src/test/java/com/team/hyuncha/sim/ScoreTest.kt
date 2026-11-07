@@ -97,11 +97,25 @@ class ScoreTest {
     }
 
     @Test
-    fun 모범_주행과_같은_시간이면_시간_만점() {
+    fun 멈춰서_확인한_시간은_주행_시간에서_빠진다() {
+        val sim = ParkingSimulator(CarPresets.GRANDEUR, ParkingMaps.perpendicular())
+        val input = object : DrivingInput {
+            override val steeringDeg = 0.0
+            override var direction = Direction.FORWARD
+            override var brakePressed = true
+        }
+        repeat(120) { sim.step(input, dt) }         // 2초 멈춤
+        input.brakePressed = false
+        repeat(60) { sim.step(input, dt) }          // 1초 움직임
+        input.brakePressed = true
+        repeat(300) { sim.step(input, dt) }         // 5초 멈춤 (멈추는 데 걸린 시간은 움직인 시간)
+        assertEquals(8.0, sim.elapsedSec, 1e-6)
+        assertTrue("움직인 시간 ${sim.movingSec}", sim.movingSec in 1.0..1.6)
+    }
+
+    @Test
+    fun 모범_주행과_같으면_주행_시간_만점() {
         val plan = Coach.solve(CarPresets.GRANDEUR, ParkingMaps.perpendicular())!!
-        val mine = plan.run
-        val full = Scoring.score(mine, mine)!!.points("시간")
-        assertEquals(15, full)
-        assertTrue(Scoring.movingTime(mine) > 0)
+        assertEquals(15, Scoring.score(plan.run, plan.run)!!.points("주행 시간"))
     }
 }

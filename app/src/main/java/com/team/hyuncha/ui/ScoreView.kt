@@ -65,7 +65,7 @@ fun ScoreBreakdown(score: ParkingScore, modifier: Modifier = Modifier) {
             }
             Column {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(item.name, modifier = Modifier.width(96.dp), fontWeight = FontWeight.SemiBold)
+                    Text(item.name, modifier = Modifier.width(130.dp), fontWeight = FontWeight.SemiBold, maxLines = 1, softWrap = false)
                     LinearProgressIndicator(
                         progress = { ratio },
                         color = barColor,
@@ -73,9 +73,11 @@ fun ScoreBreakdown(score: ParkingScore, modifier: Modifier = Modifier) {
                         modifier = Modifier.weight(1f).height(10.dp),
                         strokeCap = androidx.compose.ui.graphics.StrokeCap.Round,
                     )
-                    Text("${item.points}/${item.max}", modifier = Modifier.width(64.dp).padding(start = 10.dp), fontWeight = FontWeight.Bold)
+                    Text("${item.points}/${item.max}", modifier = Modifier.width(96.dp).padding(start = 12.dp), fontWeight = FontWeight.Bold,
+                        maxLines = 1, softWrap = false)
                 }
-                Text(item.detail, fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 96.dp))
+                Text(item.detail, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(start = 130.dp))
             }
         }
     }

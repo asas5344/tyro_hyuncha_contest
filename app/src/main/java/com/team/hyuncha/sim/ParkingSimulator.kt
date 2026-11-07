@@ -18,6 +18,7 @@ data class ParkingResult(
     val centerOffsetM: Double,   // 칸 중앙에서 벗어난 거리
     val directionChanges: Int,   // 전진·후진 전환 횟수 (적을수록 좋음)
     val elapsedSec: Double,
+    val movingSec: Double = elapsedSec,   // 그중 차가 실제로 움직인 시간 (멈춰서 확인한 시간 제외)
 )
 
 /**
@@ -34,6 +35,7 @@ class ParkingSimulator(val car: CarSpec, val map: ParkingMap) {
     var result: ParkingResult? = null; private set
     var directionChanges = 0; private set
     var elapsedSec = 0.0; private set
+    var movingSec = 0.0; private set           // 차가 실제로 움직인 시간
 
     /** 지나온 경로 (화면 궤적 표시용, 일정 거리마다) */
     val trail = mutableListOf(map.start)
@@ -97,6 +99,7 @@ class ParkingSimulator(val car: CarSpec, val map: ParkingMap) {
 
         // 전진·후진 전환 횟수: 실제로 움직인 방향이 바뀔 때만 셈
         if (abs(speed) > MOVING_THRESHOLD) {
+            movingSec += dt
             val moving = if (speed > 0) Direction.FORWARD else Direction.REVERSE
             if (lastMoveDirection != null && moving != lastMoveDirection) {
                 directionChanges++
@@ -139,6 +142,7 @@ class ParkingSimulator(val car: CarSpec, val map: ParkingMap) {
                 centerOffsetM = hypot(body.center.x - map.slot.center.x, body.center.y - map.slot.center.y),
                 directionChanges = directionChanges,
                 elapsedSec = elapsedSec,
+                movingSec = movingSec,
             )
         }
     }
@@ -152,6 +156,7 @@ class ParkingSimulator(val car: CarSpec, val map: ParkingMap) {
         result = null
         directionChanges = 0
         elapsedSec = 0.0
+        movingSec = 0.0
         lastMoveDirection = null
         trail.clear()
         trail.add(start)

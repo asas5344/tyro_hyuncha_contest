@@ -20,7 +20,7 @@ data class ParkingScore(val total: Int, val grade: String, val items: List<Score
  * | 앞뒤 위치 | 10 | 남는 길이의 절반 안 → 칸 끝에 붙으면 2점 |
  * | 전후진 전환 | 20 | 기준 횟수 이하(T자 1, 평행 2, 사선 0) → 1회 넘을 때마다 6점씩 감점 |
  * | 안전 거리 | 15 | 주행 내내 주차된 차와 20cm 이상 → 스치듯 지나가면 3점 (벽은 칸 길이 때문에 가까울 수밖에 없어서 앞뒤 위치에서 봄) |
- * | 시간 | 15 | 모범 주행의 1.2배 이내 → 3배 이상이면 0점 |
+ * | 주행 시간 | 15 | 실제로 움직인 시간이 모범 주행의 1.2배 이내 → 3배 이상이면 0점 (멈춰서 확인한 시간은 빼서, 앞뒤로 쓸데없이 왔다 갔다 한 만큼만 감점) |
  *
  * 등급: S 95+, A 85+, B 70+, C 55+, D
  * 부딪히면 주차 실패라 점수 없음.
@@ -71,13 +71,14 @@ object Scoring {
         val safety = item("안전 거리", 15, lerpScore(-clearance, good = -0.20, bad = 0.0, min = 3.0, max = 15.0),
             if (clearance >= NO_CAR_NEARBY) "가까이 지나간 주차된 차 없음" else "주차된 차에 가장 가까이 간 거리 ${cm(clearance)}")
 
-        // 6) 시간: 같은 주차장에서 모범 주행과 비교 (출발 전 기다린 시간은 빼고 처음 움직인 때부터)
-        val mine = movingTime(sim)
-        val ref = model?.takeIf { it.result != null }?.let(::movingTime)
+        // 6) 주행 시간: 같은 주차장에서 모범 주행과 비교. 멈춰서 주변을 확인한 시간은 좋은 습관이라 빼고 움직인 시간만 봄
+        val mine = r.movingSec
+        val ref = model?.result?.movingSec
         val time = if (ref == null || ref <= 0.0) {
-            item("시간", 15, 15.0, "${fmt(mine, 0)}초")
+            item("주행 시간", 15, 15.0, "움직인 시간 ${fmt(mine, 0)}초")
         } else {
-            item("시간", 15, lerpScore(mine / ref, good = 1.2, bad = 3.0, min = 0.0, max = 15.0), "${fmt(mine, 0)}초 (모범 주행 ${fmt(ref, 0)}초)")
+            item("주행 시간", 15, lerpScore(mine / ref, good = 1.2, bad = 3.0, min = 0.0, max = 15.0),
+                "움직인 시간 ${fmt(mine, 0)}초 (모범 주행 ${fmt(ref, 0)}초)")
         }
 
         val items = listOf(angle, sideItem, endItem, changes, safety, time)
@@ -91,12 +92,6 @@ object Scoring {
         total >= 70 -> "B"
         total >= 55 -> "C"
         else -> "D"
-    }
-
-    /** 처음 움직인 때부터 주차 성공까지 걸린 시간(초) */
-    fun movingTime(sim: ParkingSimulator): Double {
-        val start = sim.history.firstOrNull { it.pose != sim.history.first().pose }?.timeSec ?: 0.0
-        return (sim.elapsedSec - start).coerceAtLeast(0.0)
     }
 
     private const val NO_CAR_NEARBY = 5.0
