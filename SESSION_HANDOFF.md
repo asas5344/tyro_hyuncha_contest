@@ -1,29 +1,13 @@
 # 새 세션 인수인계 — 2026-11-09
 
-## 새 세션에 붙여 넣을 프롬프트
+## 개발 기준
 
-```text
-/Users/gimmin-u/StudioProjects/Hyuncha/SESSION_HANDOFF.md를 먼저 읽고 기존 3D 주차 앱 작업을 이어가줘.
-작업 브랜치는 feature/realistic이며 원본 경로로 통합한 상태야. 기존 작업과 자산을 보존하고 의미 있는 단위로 커밋해.
-기존 주행·충돌·주차 판정과 운전석 조작 방식을 유지하면서 실제 3D 표현을 개선하는 작업이야.
-안내창과 시점 버튼은 사용자 확인 완료이며,
-미러·후방 화면·다시 보기 통합 검증을 이어가줘. 이미 승인한 그랜저 외형은 다시 만들지 마.
-에뮬레이터는 실행 중인 것을 우선 사용하고, 필요하면 터미널에서 별도 실행해. 아이패드·웹 배포는 하지 마.
-한국어로 응답하고, 구현·검증을 자율적으로 진행하되 확인하지 않은 결과를 완료라고 말하지 마.
-```
-
-## 작업 위치와 사용자 요구
-
-- 실제 작업 디렉터리: `/Users/gimmin-u/StudioProjects/Hyuncha`
-- 브랜치: `feature/realistic`. 기준은 `feature/first-person`의 `611de13`.
-- 사용자 요청으로 원본 프로젝트로 작업을 통합했다. 앞으로 원본에서 작업하고 의미 있는 단위로 로컬 커밋한다. 별도 realistic 작업본은 보존한다.
+- 작업 브랜치: `feature/realistic`. 기준 커밋은 `feature/first-person`의 `611de13`이며, 3D 구현 통합 커밋은 `73cc38f`다.
 - 기존 `ParkingSimulator`의 이동·조향·충돌·주차 판정을 활용한다. 1단위=1m, 차량 기준은 뒷바퀴 축 중심이다.
 - 사용자는 별도 운전 메커니즘을 원하지 않는다. 기존 운전석 동작을 유지하며 차량 내외부와 주차장 표현을 3D로 개선하는 것이 목적이다.
 - 그랜저 외형은 곡면 범퍼를 적용한 기존 버전으로 승인했다. Astra 비교안은 채택하지 않았다. 홈 차 선택 이미지가 품질 기준이다.
 - 모든 차종은 공통 실내를 사용한다. 차종별 눈높이·장착 위치는 달라야 한다.
 - 좌우 버튼은 사이드미러 확인용이다. 운전자 기준 좌우 미러가 비슷한 형태로 보여야 하며 오른쪽 미러는 운전자 쪽으로 더 회전한다.
-- 아이패드·Sites 웹 미리보기 작업은 취소했다. 추가 웹 작업·배포를 재개하지 않는다.
-- Mac 메모리 8GB. 에뮬레이터는 터미널 별도 실행을 선호한다. 중복 실행하지 않는다.
 
 ## 현재 마일스톤과 검증 한계
 
@@ -37,12 +21,10 @@
 ## 직전 수정(사용자 확인 완료): 안내창이 시점 버튼을 가리는 문제
 
 - 사용자 실제 차량 모드 스크린샷에서 브레이크 대기 안내창이 BottomCenter의 왼쪽·정면·오른쪽 버튼을 가렸다.
-- 버튼 자체에는 주행 시작/이동 여부 조건이 없다. 이전 설명에서 이동·갱신 문제로 추정한 것은 틀렸고 겹침 문제였다.
 - 사용자 요청대로 버튼은 그대로 두고 안내창만 위로 옮겼다.
 - `app/src/main/java/com/team/hyuncha/ui/ParkingScreen.kt`의 `waitingForBrake -> NoticeCard`:
   `Modifier.align(Alignment.BottomCenter).padding(bottom = 88.dp)`.
 - 버튼은 `RealisticParkingView.kt` BottomCenter, bottom=24.dp 그대로다.
-- 이 수정 후 `:app:assembleDebug` 성공, 실행 중인 에뮬레이터 사용자10에 APK 설치 성공, MainActivity 실행 성공.
 - **사용자가 실제 차량 모드에서 최신 안내창 위치와 세 시점 버튼의 정상 동작을 직접 확인했다(2026-11-09).**
 - 기존 `DriverViewRegressionTest`는 `HyunchaApp(null)`로 실행하는 화면 조작 모드다. 실제 차량 모드의 브레이크 안내창이 없어 이번 버그를 놓쳤다. 이 테스트 통과만으로 실제 차량 모드 겹침 해결을 주장하면 안 된다.
 - 필요하면 MainActivity 기반 실제 차량 모드에서 브레이크 입력 전에도 세 버튼이 보이고 눌리는지 확인한다. 검증을 위해 P단 잠금/브레이크 안전 조건을 우회하지 않는다.
@@ -74,44 +56,15 @@ Filament/gltfio는 **1.66.0**으로 고정되어 있다. matc도 같은 버전�
 - 최신 실제 Android 이미지: `verification/mirrors/*-assembly-final.jpg`. 다른 suffix는 과거 중간 결과다.
 - 미러 최종 조립 시 단위 테스트70개와 Android 계측 테스트2개가 통과했다. 그랜저 실제 화면 검증이며 다른 세 차종의 최신 Android 시각 승인까지 뜻하지 않는다.
 
-## 실행 및 빌드 명령
+## 실행 및 검증
 
-작업 디렉터리로 이동한 후 실행한다. 아래 명령은 로컬 Mac 기준이다.
-
-```sh
-cd '/Users/gimmin-u/StudioProjects/Hyuncha'
-JAVA_HOME='/Applications/Android Studio.app/Contents/jbr/Contents/Home' ./gradlew :app:assembleDebug --offline --no-daemon --max-workers=1
-```
-
-Gradle 캐시는 작업 폴더 밖이므로 샌드박스 접근 오류가 나면 권한 확장 도구로 실행한다. 의존성이 없는 경우에만 offline을 빼고 원인을 확인한다.
+환경 설정과 기본 빌드·설치는 [README.md](README.md)를 따른다. 계측 테스트는 부팅이 완료된 Pleos 에뮬레이터에서 실행한다.
 
 ```sh
-/Users/gimmin-u/Library/Android/sdk/platform-tools/adb devices
+./gradlew :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.team.hyuncha.ui.DriverViewRegressionTest
 ```
 
-기존 에뮬레이터가 없을 때만 터미널에서 별도 실행:
-
-```sh
-/Users/gimmin-u/Library/Android/sdk/emulator/emulator -avd Pleos_Connect_v2.1.0 -gpu host -no-boot-anim
-```
-
-Pleos 화면은 **사용자10**이다. user0에만 설치/실행하면 화면에 앱이 안 나타날 수 있다.
-
-```sh
-/Users/gimmin-u/Library/Android/sdk/platform-tools/adb -e install -r --user 10 app/build/outputs/apk/debug/app-debug.apk
-/Users/gimmin-u/Library/Android/sdk/platform-tools/adb -e shell am start --user 10 -W -n com.team.hyuncha/.MainActivity
-```
-
-샌드박스 안의 adb는 소켓 접근 실패로 잘못된 daemon 재시작을 시도할 수 있다. 도구에서는 adb를 권한 확장으로 실행한다.
-
-단위 테스트 및 기존 미러 계측 테스트:
-
-```sh
-JAVA_HOME='/Applications/Android Studio.app/Contents/jbr/Contents/Home' ./gradlew :app:testDebugUnitTest --offline --no-daemon --max-workers=1
-JAVA_HOME='/Applications/Android Studio.app/Contents/jbr/Contents/Home' ./gradlew :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.team.hyuncha.ui.DriverViewRegressionTest --offline --no-daemon --max-workers=1
-```
-
-관련 기존 안정성 테스트는 `Parking3DTest#realFramesSurviveDrivingViewChangesAndBackground`다. 무거운 전체 계측을 무작정 반복하지 말고 변경에 맞춰 실행한다.
+관련 안정성 테스트는 `Parking3DTest#realFramesSurviveDrivingViewChangesAndBackground`다. 변경 범위에 맞춰 계측 대상을 선택한다.
 
 ## 화면 검증 시 주의
 
@@ -133,17 +86,14 @@ JAVA_HOME='/Applications/Android Studio.app/Contents/jbr/Contents/Home' ./gradle
 
 ## 문서 관리
 
-README는 앱 소개·설정·조작·빌드 안내를 담당하고, 작업 상태·설계·검증·자산 제작 기록은 이 문서 하나에 유지한다. 과거의 에뮬레이터 재개 금지, 정면 FOV 64도, 별도 worktree 작업 지침은 현재 지침이 아니다. 과거 통과 기록과 최신 계측 실패를 구분한다.
+README는 앱 소개·설정·조작·빌드 안내를 담당하고, 작업 상태·설계·검증·자산 제작 기록은 이 문서에 유지한다. 개인 환경 경로나 에이전트 실행 권한 설정은 저장소 문서에 포함하지 않는다.
 
-## 원본 프로젝트 통합 — 2026-11-09
+## 최신 검증 — 2026-11-09
 
-- 사용자 요청에 따라 원본 `/Users/gimmin-u/StudioProjects/Hyuncha`의 `feature/realistic`에서 작업한다.
-- 기존 별도 realistic 작업본은 미커밋 파일을 보존한 detached HEAD 상태이며 더 이상 주 작업 경로가 아니다.
-- 통합 커밋: `73cc38f`. 원본에 있던 주석 빈 줄 변경도 보존했다.
-- 원본 경로에서 `:app:assembleDebug`, `:app:testDebugUnitTest` 성공. 단위 테스트 70개 통과, 실패·오류·건너뜀 0개.
-- 브레이크 안내창과 세 시점 버튼은 사용자 직접 확인으로 정상 동작 확인 완료.
-- GitHub push는 아직 하지 않았다. 과거 중간 검증 렌더는 로컬에 보존하고 Git 추적에서 제외했다.
-- 원본 경로에서 `Parking3DTest#realFramesSurviveDrivingViewChangesAndBackground` 실행은 실패: `Instrumentation run failed due to Process crashed`. 같은 시간대 에뮬레이터 Car service 및 여러 시스템 프로세스 종료 로그가 있어 환경 문제와 앱 문제를 아직 구분하지 못했다. 통합 검증 완료로 간주하지 않는다. 상세 로그는 `app/build/outputs/androidTest-results/connected/debug/`에 있다.
+- `:app:assembleDebug`, `:app:testDebugUnitTest` 성공. 단위 테스트 70개 통과, 실패·오류·건너뜀 0개.
+- 실제 차량 모드의 브레이크 안내창과 세 시점 버튼은 수동 확인으로 정상 동작 확인 완료.
+- `Parking3DTest#realFramesSurviveDrivingViewChangesAndBackground`는 `Instrumentation run failed due to Process crashed`로 실패했다. 같은 시간대 에뮬레이터 Car service 및 여러 시스템 프로세스 종료 로그가 있어 환경 문제와 앱 문제를 구분해야 한다. 통합 검증 완료로 간주하지 않는다.
+- 계측 로그는 실행 후 `app/build/outputs/androidTest-results/connected/debug/`에서 확인한다. 생성 로그와 중간 렌더는 Git 추적에서 제외하며, 최종 미러 캡처는 `verification/mirrors/*-assembly-final.jpg`에 포함한다.
 
 ## 통합한 구현·자산 제작 상세
 
@@ -186,26 +136,22 @@ MATC=/path/to/filament-1.66.0/bin/matc tools/build_materials.sh
 
 Filament/gltfio/matc는 1.66.0으로 맞춘다. 과거 1.77.3 적용은 Kotlin stdlib 2.4와 프로젝트 Kotlin 2.2.10의 충돌로 채택하지 않았다.
 
-오프라인 외형 검수는 `tools/render_vehicle.cpp`의 macOS Metal 렌더러로 수행했다. 아래 임시 SDK·조명 경로는 로컬 존재 여부를 먼저 확인한다.
+오프라인 외형 검수 도구 `tools/render_vehicle.cpp`는 macOS Metal용이다. Filament 1.66.0 macOS SDK 경로를 `FILAMENT_SDK`로 설정하고 빌드한다.
 
 ```sh
-FILAMENT_SDK=/tmp/hyuncha-filament-1.66.0/filament sh tools/build_model_renderer.sh
-verification/bin/render_vehicle app/src/main/assets/models/grandeur.glb /tmp/hyuncha-filament-1.66.0/filament/bin/assets/ibl/lightroom_14b/lightroom_14b_ibl.ktx verification/models/grandeur-review verification/models/ground.glb
+sh tools/build_model_renderer.sh
 ```
 
-- `tools/generate_studio_ibl.py`는 검수용 HDR 생성 코드다. 검수 조명은 `verification/studio/env/env_ibl.ktx`였으며 Android 앱에는 포함하지 않았다.
-- 결과는 정면·측면·후면 PNG/PPM이다. PPM은 `sips -s format png ... --out ...`으로 변환할 수 있다. `tools/render_model_poses.py`는 이전 검수 방식이다.
-- 로컬 참고 이미지: `verification/models/grandeur-rounded-{front,side,rear}.png`, 공통 실내 네 차종×세 방향은 `verification/cockpit/`. 동적 계기판·미러가 없는 오프라인 렌더이므로 Android 통합 검증을 대체하지 않는다.
+렌더러에는 모델 GLB, IBL 조명, 출력 접두사, 선택적인 지면 GLB 경로를 순서대로 전달한다. 입력 경로는 준비한 자산에 맞게 지정한다. `tools/generate_studio_ibl.py`는 검수용 HDR 생성 코드이며 검수 조명은 Android 앱에 포함하지 않는다. 정면·측면·후면 오프라인 렌더에는 동적 계기판·미러 영상이 없으므로 Android 통합 검증을 대체하지 않는다. 생성 결과는 Git 추적 대상이 아니다.
+
 - 공식 참고: [Filament 1.66.0 도구](https://github.com/google/filament/releases/tag/v1.66.0), [Filament 문서](https://google.github.io/filament/dup/intro.html), [재질·텍스처 규약](https://google.github.io/filament/Materials.md.html).
 
 ### 과거 검증 기록의 범위
 
 - 초기 모델·공통 실내 단계: debug/계측 APK 빌드, 단위 테스트 64개, GLB 구조·유효 좌표·차체 치수·축 기준 검사 및 실내 구조 검사 통과 기록이 있다.
-- 운전석 viewport·계기판 UV 수정 단계: 단위 테스트 68개, 홈→주차 정면·우측·복귀, 전후진·회전·백그라운드 복귀·3회 재진입 계측 통과 기록이 있다. 캡처는 로컬 `verification/driver-fix/`다.
-- 최종 미러 조립 단계: 단위 테스트 70개와 그랜저 실제 레이아웃·옆 차 없는 윤곽 검사 2개 통과. 다른 세 차종의 Android 시각 승인이나 최신 원본 통합 계측 성공을 의미하지 않는다.
-- 소프트웨어 GPU에서는 약 1fps였던 과거 기록이 있다. host GPU의 지속 FPS·메모리·장시간 안정성은 측정하지 않았다.
+- 운전석 viewport·계기판 UV 수정 단계: 단위 테스트 68개, 홈→주차 정면·우측·복귀, 전후진·회전·백그라운드 복귀·3회 재진입 계측 통과 기록이 있다.
+- 최종 미러 조립 단계: 단위 테스트 70개와 그랜저 실제 레이아웃·옆 차 없는 윤곽 검사 2개 통과. 다른 세 차종의 Android 시각 승인이나 최신 통합 계측 성공을 의미하지 않는다.
 - `Parking3DTest#everyVehicleAndParkingModeDrawsBothReverseCameras`는 네 차종×세 방식의 실제 텍스처와 후방/서라운드 전환을 검사하도록 준비된 테스트이며 최신 통과 기록은 없다.
-- 취소된 웹 실험은 과거 비공개 배포 이후 종료했다. 서버·웹 작업을 재개하지 않고 Android 개발에 집중한다.
 
 ## 홈 차량 이미지 제작 기록
 

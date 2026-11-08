@@ -11,13 +11,13 @@
 
 ## 현재 개발 상태
 
-원본 프로젝트 `/Users/gimmin-u/StudioProjects/Hyuncha`의 `feature/realistic` 브랜치에서 작업합니다. Filament 3D 운전석을 기본으로 사용하며, 기존 주행·충돌·주차 판정과 운전석 조작 방식을 유지합니다. 별도의 기존/3D 운전석 선택 UI는 없습니다.
+`feature/realistic` 브랜치에서 3D 운전석을 개발하고 있습니다. Filament 3D 운전석을 기본으로 사용하며, 기존 주행·충돌·주차 판정과 운전석 조작 방식을 유지합니다. 별도의 기존/3D 운전석 선택 UI는 없습니다.
 
 - 구현: 네 차종 GLB, 승인된 그랜저 외형, 공통 실내와 차종별 눈높이, 미러·후방 화면·다시 보기 연결.
-- 확인: 원본에서 APK 빌드 및 단위 테스트 70개 통과. 실제 차량 모드의 브레이크 안내창과 시점 버튼은 사용자 확인 완료.
+- 확인: APK 빌드 및 단위 테스트 70개 통과. 실제 차량 모드의 브레이크 안내창과 시점 버튼은 사용자 확인 완료.
 - 진행 중: 주행 중 영상·다시 보기 통합 검증, 모든 차종·세 주차 방식 회귀 검증, 다른 차종 외형 개선, 성능·장시간 안정성 측정. 최근 3D 계측은 프로세스 종료로 실패하여 원인 확인이 필요합니다. 지속 30fps는 미검증입니다.
 
-개발 상태, 검증 기록, 재생성 방법과 차량 이미지 제작 기록은 [SESSION_HANDOFF.md](SESSION_HANDOFF.md)에 통합합니다. 아이패드·웹 미리보기 및 배포 작업은 취소 상태입니다.
+개발 상태, 검증 기록, 재생성 방법과 차량 이미지 제작 기록은 [SESSION_HANDOFF.md](SESSION_HANDOFF.md)에서 확인할 수 있습니다.
 
 ---
 
@@ -47,8 +47,10 @@ Android Studio > Device Manager > Pleos Connect ▶. **홈 화면이 다 뜰 때
 ### ② 앱 실행
 Android Studio에서 ▶ Run (또는 터미널에서 아래 "빌드" 참고).
 
-### ③ Virtual Console 준비 (실제 차량 모드로 테스트할 때)
-프로젝트 폴더에서 한 줄 실행:
+### ③ Virtual Console 준비 (실제 차량 모드로 테스트할 때, macOS 도우미)
+다른 환경에서는 `adb forward tcp:8088 tcp:8088` 후 브라우저에서 `http://127.0.0.1:8088`을 열고, 개발자 콘솔에서 `tools/virtual-console-keyboard.js`를 실행합니다. Q·E 연결에는 `tools/steering-buttons-bridge.py`도 필요합니다.
+
+macOS에서는 프로젝트 폴더에서 도우미를 실행할 수 있습니다:
 
 ```bash
 ./tools/start-console.sh
@@ -108,13 +110,12 @@ Android Studio에서 ▶ Run (또는 터미널에서 아래 "빌드" 참고).
 ## 4. 빌드·테스트 (터미널)
 
 ```bash
-export JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home"
-./gradlew :app:testDebugUnitTest :app:assembleDebug --offline --no-daemon --max-workers=1
-~/Library/Android/sdk/platform-tools/adb -e install -r --user 10 app/build/outputs/apk/debug/app-debug.apk
-~/Library/Android/sdk/platform-tools/adb -e shell am start --user 10 -W -n com.team.hyuncha/.MainActivity
+./gradlew :app:testDebugUnitTest :app:assembleDebug
+adb install -r --user current app/build/outputs/apk/debug/app-debug.apk
+adb shell am start --user current -W -n com.team.hyuncha/.MainActivity
 ```
 
-Pleos 에뮬레이터 화면은 사용자10입니다. 기존 실행 중인 에뮬레이터를 우선 사용하고, 의존성이 캐시에 없을 때만 `--offline`을 빼세요.
+프로젝트 루트에서 실행합니다. Android Studio의 Gradle JDK 또는 `JAVA_HOME`을 설정하고, Android SDK의 `platform-tools`를 `PATH`에 추가하세요. Windows에서는 `gradlew.bat`을 사용합니다. 다중 사용자 에뮬레이터는 현재 화면의 사용자에 앱을 설치·실행해야 합니다.
 
 ---
 
@@ -145,7 +146,6 @@ tools/
 
 | 증상 / 사항 | 원인 · 해결 |
 |---|---|
-| 빌드 시 `is defined multiple times` | 바탕화면 iCloud 동기화가 build 폴더에 `파일 2.jar` 복사본을 만듦. **Build > Clean Project** 후 다시 빌드. 반복되면 프로젝트를 바탕화면 밖으로 옮기기 |
 | `Could not find ai.pleos.playground:Vehicle:2.3.1` | 2.3.1은 저장소에 없음. **2.3.2** 사용 |
 | SDK 호출에 빨간 줄 (`@RequiresPermission`) | Manifest에 권한 누락. 조향·브레이크·기어는 모두 `pleos.car.permission.CAR_DRIVE` |
 | Virtual Console 접속 안 됨 | 에뮬레이터 부팅 완료 확인 후 `./tools/start-console.sh` 다시 실행 |
