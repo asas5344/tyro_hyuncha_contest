@@ -13,8 +13,8 @@
 
 1. 실제 Filament 3D 실행, 시뮬레이터 좌표 연결, 맵 기반 주차장: 구현됨.
 2. 승인한 그랜저 외형, 공통 실내·핸들, 차종별 운전자 시점 높이: 구현됨. 정면 viewport 왜곡과 계기판 UV도 수정했다.
-3. 좌우 미러·후방 화면·다시 보기: 연결 코드가 있으며 현재 미러 품질과 실제 화면 통합 검증을 진행 중이다.
-4. 세 주차 방식·모든 차종 회귀 검증, 다른 차종 외형 품질 개선, 성능·장시간 안정성 측정은 남아 있다.
+3. 좌우 미러·후방 화면·다시 보기: 연결됨. 네 차종×세 주차 방식의 실제 프레임·주행·시점/후방 전환·재생·초기화 회귀 검사를 통과했다. 세부 영상 방향과 외형 시각 승인은 별도다.
+4. 네 차종×세 주차 방식 자동 회귀 검증 완료. 다른 차종 외형 품질 개선과 성능·장시간 안정성 측정은 보류한다.
 
 30fps는 목표일 뿐 측정으로 확인한 성능이 아니다. 전체 완성 또는 모든 차종 검증 완료로 표현하지 않는다.
 
@@ -76,13 +76,13 @@ Filament/gltfio는 **1.66.0**으로 고정되어 있다. matc도 같은 버전�
 - 테스트 로그 경로: `app/build/outputs/androidTest-results/connected/debug/` 아래 장치별 logcat 파일.
 - 오프라인 Metal 모델 렌더는 외형 확인용이다. 실제 앱 UI·미러 검증을 대체하지 않는다.
 
-## 이어서 진행할 순서
+## 현재 중단 지점과 남은 범위
 
-1. 안내창·세 시점 버튼은 사용자 확인 완료. 다음은 주행 중 전방·미러·후방·다시 보기 통합 검증이다.
-2. 사용자가 미러 형태·각도에 추가 피드백을 주면 현재 동일 윤곽/운전자 방향 구조를 기준으로 수정한다.
-3. 전진·후진·회전 중 전방/미러/후방 영상의 위치·반전·방향, CarCamera 설정에 따른 기존 탑뷰, Guidance 진행선을 검증한다.
-4. 실제 차량 입력과 화면 입력, P단 잠금, 브레이크, 충돌/성공/점수, 재시작·랜덤 배치, 다시 보기·모범 주행, T자·평행·사선, 탑뷰 전환을 회귀 검증한다.
-5. 다른 차종 외형 개선과 시점 보정, 성능·메모리·장시간 검증으로 진행한다. 공통 실내 요구는 유지한다.
+사용자 요청에 따라 네 차종×세 주차 방식 회귀 검증까지 마치고 중단한다. GitHub 업로드는 하지 않는다. 이후 재개 시 남은 범위는 아래와 같다.
+
+1. 실제 차량 입력·P단 잠금과 주행 중 영상 방향·반전·안내선의 세부 실사용 검수. 이번 12개 조합 검사는 테스트 입력으로 실행했다.
+2. 다른 차종 외형 품질 개선 및 시점 미세 조정. 승인된 그랜저와 공통 실내 요구는 유지한다.
+3. FPS·메모리·장시간 안정성 측정. 단기 화면 재진입 통과를 장시간 안정성 보장으로 표현하지 않는다.
 
 ## 문서 관리
 
@@ -90,10 +90,20 @@ README는 앱 소개·설정·조작·빌드 안내를 담당하고, 작업 상�
 
 ## 최신 검증 — 2026-11-09
 
-- `:app:assembleDebug`, `:app:testDebugUnitTest` 성공. 단위 테스트 70개 통과, 실패·오류·건너뜀 0개.
-- 실제 차량 모드의 브레이크 안내창과 세 시점 버튼은 수동 확인으로 정상 동작 확인 완료.
-- `Parking3DTest#realFramesSurviveDrivingViewChangesAndBackground`는 `Instrumentation run failed due to Process crashed`로 실패했다. 같은 시간대 에뮬레이터 Car service 및 여러 시스템 프로세스 종료 로그가 있어 환경 문제와 앱 문제를 구분해야 한다. 통합 검증 완료로 간주하지 않는다.
-- 계측 로그는 실행 후 `app/build/outputs/androidTest-results/connected/debug/`에서 확인한다. 생성 로그와 중간 렌더는 Git 추적에서 제외하며, 최종 미러 캡처는 `verification/mirrors/*-assembly-final.jpg`에 포함한다.
+- `main`의 1000점 채점·기기 내 랭킹을 `feature/realistic`에 로컬 통합했다(통합 커밋 `a59b1ad`). README 충돌 두 곳은 양쪽 기능을 보존해 정리했다.
+- `:app:assembleDebug`, `:app:assembleDebugAndroidTest`, `:app:testDebugUnitTest` 성공. 단위 테스트 89개 통과, 실패·오류·건너뜀 0개.
+- `ParkingMatrixTest`는 아반떼·그랜저·투싼·싼타페 × T자·평행·사선 12개 조합에서 재현 가능한 랜덤 배치의 모범 주차 성공·점수·재생 기록·초기화·브레이크 정지·충돌 판정을 확인했다.
+- Pleos API 34의 실제 Android 계측 `Parking3DTest` 2개 통과. `everyVehicleAndParkingModeDrawsBothReverseCameras`의 12개 조합 각각에서 비어 있지 않은 실제 텍스처, 이동 후 프레임 변화, 좌우·정면 전환, 후방·서라운드 확대/복귀, 다시 보기/실시간 복귀, 시뮬레이터 초기화를 확인했다. 픽셀 변화 검사이므로 반전 방향이나 외형 품질의 최종 시각 승인을 의미하지 않는다.
+- `realFramesSurviveDrivingViewChangesAndBackground`: 전진·후진 회전·시점 전환·백그라운드 복귀·3회 화면 재진입 통과. 이전 프로세스 종료 실패는 이번의 부팅 완료·차량 서비스 준비 확인 후 사용자 프로필을 지정한 직접 실행에서 재현되지 않았다. 과거 실패 원인을 확정한 것은 아니다.
+- `HyunchaNavigationTest`의 운전석↔탑뷰 전환과 주차 방식별 랭킹 정렬·빈 목록·홈 복귀 검사 2개도 통과했다.
+- 브레이크 안내창과 세 시점 버튼은 수동 확인으로 정상 동작 확인 완료.
+- 생성 로그와 중간 렌더는 Git 추적에서 제외한다. 최종 미러 캡처는 `verification/mirrors/*-assembly-final.jpg`에 포함한다.
+
+직접 계측 실행 예시(현재 화면의 사용자 프로필에서 실행):
+
+```sh
+adb shell am instrument --user current -w -r -e class com.team.hyuncha.ui.Parking3DTest com.team.hyuncha.test/androidx.test.runner.AndroidJUnitRunner
+```
 
 ## 통합한 구현·자산 제작 상세
 
@@ -151,7 +161,7 @@ sh tools/build_model_renderer.sh
 - 초기 모델·공통 실내 단계: debug/계측 APK 빌드, 단위 테스트 64개, GLB 구조·유효 좌표·차체 치수·축 기준 검사 및 실내 구조 검사 통과 기록이 있다.
 - 운전석 viewport·계기판 UV 수정 단계: 단위 테스트 68개, 홈→주차 정면·우측·복귀, 전후진·회전·백그라운드 복귀·3회 재진입 계측 통과 기록이 있다.
 - 최종 미러 조립 단계: 단위 테스트 70개와 그랜저 실제 레이아웃·옆 차 없는 윤곽 검사 2개 통과. 다른 세 차종의 Android 시각 승인이나 최신 통합 계측 성공을 의미하지 않는다.
-- `Parking3DTest#everyVehicleAndParkingModeDrawsBothReverseCameras`는 네 차종×세 방식의 실제 텍스처와 후방/서라운드 전환을 검사하도록 준비된 테스트이며 최신 통과 기록은 없다.
+- `Parking3DTest#everyVehicleAndParkingModeDrawsBothReverseCameras`는 네 차종×세 방식의 실제 텍스처·주행·미러·후방/서라운드·재생·초기화를 검사하며 최신 실행에서 12개 조합이 통과했다.
 
 ## 홈 차량 이미지 제작 기록
 
