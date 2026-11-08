@@ -25,5 +25,4 @@ __pycache__/
 verification/*
 !verification/mirrors/
 verification/mirrors/*
-!verification/mirrors/README.md
 !verification/mirrors/*-assembly-final.jpg

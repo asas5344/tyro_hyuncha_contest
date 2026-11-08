@@ -3,15 +3,21 @@
 현대차·기아 차량용 앱 공모전(안전운전 부문) 출품작.
 차가 P단에 서 있는 상태에서 **실제 핸들과 브레이크로** 화면 속 차를 움직여 주차를 연습하는 Pleos Connect 앱입니다.
 
-- 2D 탑뷰 주차 3가지: T자 주차·평행 주차·사선 주차 (목표 칸과 주차된 차가 매번 랜덤)
+- 실제 3D 운전석과 탑뷰로 연습하는 주차 3가지: T자 주차·평행 주차·사선 주차 (목표 칸과 주차된 차가 매번 랜덤)
 - 차종 선택: 아반떼·그랜저 (세단), 투싼·싼타페 (SUV) — 차 크기와 회전 반경이 반영됨
 - 입력 2가지: **화면 조작** (슬라이더·버튼·키보드) / **실제 차량** (Pleos Vehicle SDK)
 - 안전 잠금: 실제 차량 모드는 기어가 P일 때만 진행
 - 충돌하면 실패, 칸 안에 반듯하게 멈추면 성공 (각도 오차·중앙 거리·전후진 횟수·시간 표시)
 
-## 실제 3D 운전석 작업
+## 현재 개발 상태
 
-`feature/realistic`에서 네 차종 GLB와 Filament 운전석·미러·후방 화면을 연결하고 있습니다. 기존 운전석·탑뷰는 유지합니다. 구현 범위, 재생성 방법, 실행 검증의 한계는 [3D 작업 기록](docs/realistic-3d.md)을 참고하세요.
+원본 프로젝트 `/Users/gimmin-u/StudioProjects/Hyuncha`의 `feature/realistic` 브랜치에서 작업합니다. Filament 3D 운전석을 기본으로 사용하며, 기존 주행·충돌·주차 판정과 운전석 조작 방식을 유지합니다. 별도의 기존/3D 운전석 선택 UI는 없습니다.
+
+- 구현: 네 차종 GLB, 승인된 그랜저 외형, 공통 실내와 차종별 눈높이, 미러·후방 화면·다시 보기 연결.
+- 확인: 원본에서 APK 빌드 및 단위 테스트 70개 통과. 실제 차량 모드의 브레이크 안내창과 시점 버튼은 사용자 확인 완료.
+- 진행 중: 주행 중 영상·다시 보기 통합 검증, 모든 차종·세 주차 방식 회귀 검증, 다른 차종 외형 개선, 성능·장시간 안정성 측정. 최근 3D 계측은 프로세스 종료로 실패하여 원인 확인이 필요합니다. 지속 30fps는 미검증입니다.
+
+개발 상태, 검증 기록, 재생성 방법과 차량 이미지 제작 기록은 [SESSION_HANDOFF.md](SESSION_HANDOFF.md)에 통합합니다. 아이패드·웹 미리보기 및 배포 작업은 취소 상태입니다.
 
 ---
 
@@ -103,10 +109,12 @@ Android Studio에서 ▶ Run (또는 터미널에서 아래 "빌드" 참고).
 
 ```bash
 export JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home"
-./gradlew :app:testDebugUnitTest      # 단위 테스트 (자전거 모델, 충돌, 주차 성공 판정)
-./gradlew :app:assembleDebug          # APK 빌드
-~/Library/Android/sdk/platform-tools/adb install -r app/build/outputs/apk/debug/app-debug.apk
+./gradlew :app:testDebugUnitTest :app:assembleDebug --offline --no-daemon --max-workers=1
+~/Library/Android/sdk/platform-tools/adb -e install -r --user 10 app/build/outputs/apk/debug/app-debug.apk
+~/Library/Android/sdk/platform-tools/adb -e shell am start --user 10 -W -n com.team.hyuncha/.MainActivity
 ```
+
+Pleos 에뮬레이터 화면은 사용자10입니다. 기존 실행 중인 에뮬레이터를 우선 사용하고, 의존성이 캐시에 없을 때만 `--offline`을 빼세요.
 
 ---
 
@@ -121,7 +129,8 @@ app/src/main/java/com/team/hyuncha/
 ├── safety/SafetyLock.kt   P단 확인
 ├── sim/                   자전거 모델, 충돌(SAT)·성공 판정, 주차장 맵
 ├── data/CarSpec.kt        차종 제원
-└── ui/                    탑뷰 그리기, 조작 패널
+├── render3d/              Filament 렌더러, 카메라·미러·차종 프로필
+└── ui/                    3D 운전석, 탑뷰, 조작 패널
 tools/
 ├── start-console.sh               Virtual Console 시작 준비
 ├── virtual-console-keyboard.js    콘솔 키보드 조작

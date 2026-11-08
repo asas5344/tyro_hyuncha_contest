@@ -131,9 +131,9 @@ JAVA_HOME='/Applications/Android Studio.app/Contents/jbr/Contents/Home' ./gradle
 4. 실제 차량 입력과 화면 입력, P단 잠금, 브레이크, 충돌/성공/점수, 재시작·랜덤 배치, 다시 보기·모범 주행, T자·평행·사선, 탑뷰 전환을 회귀 검증한다.
 5. 다른 차종 외형 개선과 시점 보정, 성능·메모리·장시간 검증으로 진행한다. 공통 실내 요구는 유지한다.
 
-## 이전 문서의 우선순위
+## 문서 관리
 
-이 문서가 최신 인수인계다. `MODEL_WORK_PAUSED.md`, `docs/realistic-3d.md`, `verification/mirrors/README.md`에는 과거 기록이 섞여 있다. 특히 예전의 “에뮬레이터 재개 금지”, “정면FOV64”, “Android 미검증”은 후속 사용자 요청·수정으로 갱신되었다. 취소된 웹 작업은 계속 취소 상태다.
+README는 앱 소개·설정·조작·빌드 안내를 담당하고, 작업 상태·설계·검증·자산 제작 기록은 이 문서 하나에 유지한다. 과거의 에뮬레이터 재개 금지, 정면 FOV 64도, 별도 worktree 작업 지침은 현재 지침이 아니다. 과거 통과 기록과 최신 계측 실패를 구분한다.
 
 ## 원본 프로젝트 통합 — 2026-11-09
 
@@ -144,3 +144,98 @@ JAVA_HOME='/Applications/Android Studio.app/Contents/jbr/Contents/Home' ./gradle
 - 브레이크 안내창과 세 시점 버튼은 사용자 직접 확인으로 정상 동작 확인 완료.
 - GitHub push는 아직 하지 않았다. 과거 중간 검증 렌더는 로컬에 보존하고 Git 추적에서 제외했다.
 - 원본 경로에서 `Parking3DTest#realFramesSurviveDrivingViewChangesAndBackground` 실행은 실패: `Instrumentation run failed due to Process crashed`. 같은 시간대 에뮬레이터 Car service 및 여러 시스템 프로세스 종료 로그가 있어 환경 문제와 앱 문제를 아직 구분하지 못했다. 통합 검증 완료로 간주하지 않는다. 상세 로그는 `app/build/outputs/androidTest-results/connected/debug/`에 있다.
+
+## 통합한 구현·자산 제작 상세
+
+### 장면·카메라·다시 보기
+
+- 시뮬레이터 `(x, y)`를 glTF `(X, Z)`로 옮기며 `Y`는 높이다. 뒷바퀴 축이 원점이고 +X는 차량 전방, +Z는 우측이다. `sceneOf`가 실시간 주행과 다시 보기의 동일 상태를 전달한다.
+- 기존 맵의 주차선·목표 칸·경계벽·주변 차량으로 장면을 생성한다. 충돌 데이터 없는 기둥·연석·주차턱은 새 장애물로 추가하지 않는다. 미러 돌출부도 기존 차체 충돌 범위에 포함하지 않는다.
+- 앞바퀴 조향·바퀴 회전·핸들 회전은 별도 노드로 갱신한다. 진행선은 `Guidance.predictPath`를 재사용하고 조향·진행 방향 변경 시 고정 버퍼 메시를 갱신한다.
+- 후진 시 `CarCamera` 설정으로 후방 또는 서라운드 화면을 표시하고 확대·운전석 복귀 버튼을 제공한다. 계기판 속도·D/R을 텍스처로 표시하며 다시 보기 기록에도 실제 속도를 저장한다.
+- 모델이 없는 차종·변형 제원은 기존 표현으로 대체한다. 기존 운전석 선택 UI를 되살리지는 않는다.
+- 전방 버퍼 상한 960×720, 렌더 요청 약 30Hz이며 실제 측정 FPS와 다르다. 시야에 들어오는 미러를 갱신하고 변화가 없을 때 재렌더링을 생략한다. 화면 이탈·백그라운드에서는 렌더 콜백을 중단하고 소유 객체에서 Filament 자원을 해제한다. 최신 전체 수명주기 안정성은 미검증이다.
+
+### 공통 실내·차량 모델
+
+- `cockpit.glb` 하나를 네 차종이 공유한다. `eyeForwardM`, `eyeHeightM`에 맞춰 장착하고 차량 루트의 자식으로 연결해 주행·다시 보기에서 함께 움직인다. 외형 GLB의 구형 실내는 렌더 대상에서 제외한다.
+- 눈높이 제작값: 아반떼 1.15m, 그랜저 1.18m, 투싼 1.38m, 싼타페 1.47m. 제조사 실내 측정값이 아니다. 정면은 최신 설정인 수직 FOV 56도를 사용한다.
+- 곡면 대시보드, 계기판·센터 화면 하우징, 송풍구, 도어·팔걸이·간접조명, 센터콘솔, 발밑 구조와 핸들이 공통 실내에 있다. 핸들 제작 위치는 눈 기준 전방 0.46m, 아래 0.34m다.
+- 승인 그랜저는 `grandeur.glb`와 동일한 `sedan.glb` 별칭이다. 곡면 범퍼, 다이아몬드 그릴·2단 램프, 휠 스포크·중앙 배지, 곡면 창 기둥·문 경계를 반영했다. 전장 5.035m, 전폭 1.880m, 휠베이스 2.895m를 유지한다. Astra 비교안은 미채택이다.
+- 전장·전폭·휠베이스·뒤 오버행은 `CarSpec.kt`에서 읽어 생성한다. 눈높이·지붕 높이·미러 위치는 게임 제작값이다. `vehicle_visuals.json` 및 `VehicleVisuals.kt`도 생성 코드에서 출력한다. 주변 차량 GLB는 기존 4.8×1.86m 충돌 사각형에 맞춘다.
+- 승인 외형을 다시 만들지 않는다. 명시적으로 재생성이 필요한 경우의 그랜저 한정 명령은 `python3 tools/generate_sedan.py --car GRANDEUR`이며, 이후 `python3 tools/generate_driver_mirrors.py`를 실행해야 한다. 다른 차종까지 일괄 재생성하지 않는다.
+
+### 미러 보정 상세
+
+- 후측방 카메라는 바깥 22도, 아래 왼쪽 14도·오른쪽 18도를 향한다. 내 차 옆면은 안쪽 가장자리, 주차선·뒤쪽 공간이 중심에 오도록 보정했다.
+- 실제 유리 크기로 좌우 줌을 계산해 미러가 화면 높이 약 1/3로 보이게 한다. 미러 확인 시 미니맵은 아래로 이동한다.
+- 선형 텍스처 샘플링과 FXAA를 사용하고 렌더 타깃 UV 뒤집기를 명시적으로 제어한다. 이미 tone mapping된 피드에 역변환을 적용해 메인 뷰에서의 중복 처리를 보정한다.
+- `*-isolatedleft-assembly-final.jpg`, `*-isolatedright-assembly-final.jpg`는 옆 차를 제거한 윤곽 확인 장면이다. `resolution`, `calibrated`, `corrected`, `*-final.jpg` 등은 최종 assembly 이전의 중간 기록이다. 유리 .20×.1125m는 과거 값이고 최신 값은 .25×.140625m다.
+
+### 재생성·오프라인 외형 검수
+
+일반 Android 빌드에는 포함된 GLB·`.filamat`을 사용하므로 Python이나 matc가 필요 없다. 자산 변경 시 필요한 명령만 실행한다.
+
+```sh
+python3 tools/generate_cockpit.py
+python3 tools/check_cockpit.py
+python3 tools/check_models.py
+python3 tools/check_sedan.py
+MATC=/path/to/filament-1.66.0/bin/matc tools/build_materials.sh
+```
+
+Filament/gltfio/matc는 1.66.0으로 맞춘다. 과거 1.77.3 적용은 Kotlin stdlib 2.4와 프로젝트 Kotlin 2.2.10의 충돌로 채택하지 않았다.
+
+오프라인 외형 검수는 `tools/render_vehicle.cpp`의 macOS Metal 렌더러로 수행했다. 아래 임시 SDK·조명 경로는 로컬 존재 여부를 먼저 확인한다.
+
+```sh
+FILAMENT_SDK=/tmp/hyuncha-filament-1.66.0/filament sh tools/build_model_renderer.sh
+verification/bin/render_vehicle app/src/main/assets/models/grandeur.glb /tmp/hyuncha-filament-1.66.0/filament/bin/assets/ibl/lightroom_14b/lightroom_14b_ibl.ktx verification/models/grandeur-review verification/models/ground.glb
+```
+
+- `tools/generate_studio_ibl.py`는 검수용 HDR 생성 코드다. 검수 조명은 `verification/studio/env/env_ibl.ktx`였으며 Android 앱에는 포함하지 않았다.
+- 결과는 정면·측면·후면 PNG/PPM이다. PPM은 `sips -s format png ... --out ...`으로 변환할 수 있다. `tools/render_model_poses.py`는 이전 검수 방식이다.
+- 로컬 참고 이미지: `verification/models/grandeur-rounded-{front,side,rear}.png`, 공통 실내 네 차종×세 방향은 `verification/cockpit/`. 동적 계기판·미러가 없는 오프라인 렌더이므로 Android 통합 검증을 대체하지 않는다.
+- 공식 참고: [Filament 1.66.0 도구](https://github.com/google/filament/releases/tag/v1.66.0), [Filament 문서](https://google.github.io/filament/dup/intro.html), [재질·텍스처 규약](https://google.github.io/filament/Materials.md.html).
+
+### 과거 검증 기록의 범위
+
+- 초기 모델·공통 실내 단계: debug/계측 APK 빌드, 단위 테스트 64개, GLB 구조·유효 좌표·차체 치수·축 기준 검사 및 실내 구조 검사 통과 기록이 있다.
+- 운전석 viewport·계기판 UV 수정 단계: 단위 테스트 68개, 홈→주차 정면·우측·복귀, 전후진·회전·백그라운드 복귀·3회 재진입 계측 통과 기록이 있다. 캡처는 로컬 `verification/driver-fix/`다.
+- 최종 미러 조립 단계: 단위 테스트 70개와 그랜저 실제 레이아웃·옆 차 없는 윤곽 검사 2개 통과. 다른 세 차종의 Android 시각 승인이나 최신 원본 통합 계측 성공을 의미하지 않는다.
+- 소프트웨어 GPU에서는 약 1fps였던 과거 기록이 있다. host GPU의 지속 FPS·메모리·장시간 안정성은 측정하지 않았다.
+- `Parking3DTest#everyVehicleAndParkingModeDrawsBothReverseCameras`는 네 차종×세 방식의 실제 텍스처와 후방/서라운드 전환을 검사하도록 준비된 테스트이며 최신 통과 기록은 없다.
+- 취소된 웹 실험은 과거 비공개 배포 이후 종료했다. 서버·웹 작업을 재개하지 않고 Android 개발에 집중한다.
+
+## 홈 차량 이미지 제작 기록
+
+Built-in image_gen 도구로 생성하고, 같은 도구로 세부 묘사를 줄이는 스타일 편집을 수행했다. 실제 차량 사진 또는 공식 제조사 이미지로 표시하지 않는다. PNG의 투명도를 유지하고 ContentScale.Fit으로 원본 비율을 보존한다.
+
+## 최종 파일
+
+- app/src/main/res/drawable-nodpi/car_avante.png
+- app/src/main/res/drawable-nodpi/car_grandeur.png
+- app/src/main/res/drawable-nodpi/car_tucson.png
+- app/src/main/res/drawable-nodpi/car_santafe.png
+
+## 생성 프롬프트
+
+### avante
+
+Use case: product-mockup. Asset type: transparent PNG vehicle illustration for an Android in-car parking-practice app. Create ONE isolated complete vehicle, facing left, front-left three-quarter view with SIDE dominating about 70 percent of visible body and front fascia 30 percent, eye height near headlights, long-lens perspective (85mm), very mild foreshortening. Professional restrained semi-realistic automotive editorial illustration: smooth clean shapes, subtle limited shading, no photoreal scene, no heavy black outlines, no cartoon/chibi/toy/low-poly/papercraft appearance. Preserve real-world stock body proportions, wheelbase, normal-size wheels and roof height; do not squeeze width, shorten body, inflate cabin or exaggerate perspective. Pearl silver body, charcoal glass, dark stock tires, restrained alloy rims. Consistent illustration series, generous transparent padding around entire car and all wheels, centered landscape composition, car occupies 85% of image width. Fully transparent background, no ground plane, no background rectangle, no captions, no text, no watermark. Subject: 2024 Hyundai Avante / Elantra CN7 facelift standard sedan, NOT N performance version. Actual long low four-door sedan proportions about 4.71m length, 1.825m width. Recognizable sharp slim angular headlights, low wide grille, wedge-like faceted side creases and fastback-like roof. Normal factory wheel sizes. Realistic adult car, not a cute miniature.
+
+### grandeur
+
+Use case: product-mockup. Asset type: transparent PNG vehicle illustration for an Android in-car parking-practice app. Create ONE isolated complete vehicle, facing left, front-left three-quarter view with SIDE dominating about 70 percent of visible body and front fascia 30 percent, eye height near headlights, long-lens perspective (85mm), very mild foreshortening. Professional restrained semi-realistic automotive editorial illustration: smooth clean shapes, subtle limited shading, no photoreal scene, no heavy black outlines, no cartoon/chibi/toy/low-poly/papercraft appearance. Preserve real-world stock body proportions, wheelbase, normal-size wheels and roof height; do not squeeze width, shorten body, inflate cabin or exaggerate perspective. Pearl silver body, charcoal glass, dark stock tires, restrained alloy rims. Consistent illustration series, generous transparent padding around entire car and all wheels, centered landscape composition, car occupies 85% of image width. Fully transparent background, no ground plane, no background rectangle, no captions, no text, no watermark. Subject: 2023-2025 Hyundai Grandeur / Azera GN7 seventh-generation sedan, factory appearance. Actual elegant large long four-door sedan proportions about 5.035m length,1.88m width. Recognizable single thin unbroken horizontal daytime light strip across front, separate lower vertical headlamps, large wide dark grille, long gently curved roof and rear quarter window. Preserve long wheelbase and elegant low-slung proportions. Not boxy or caricatured.
+
+### tucson
+
+Use case: product-mockup. Asset type: transparent PNG vehicle illustration for an Android in-car parking-practice app. Create ONE isolated complete vehicle, facing left, front-left three-quarter view with SIDE dominating about 70 percent of visible body and front fascia 30 percent, eye height near headlights, long-lens perspective (85mm), very mild foreshortening. Professional restrained semi-realistic automotive editorial illustration: smooth clean shapes, subtle limited shading, no photoreal scene, no heavy black outlines, no cartoon/chibi/toy/low-poly/papercraft appearance. Preserve real-world stock body proportions, wheelbase, normal-size wheels and roof height; do not squeeze width, shorten body, inflate cabin or exaggerate perspective. Pearl silver body, charcoal glass, dark stock tires, restrained alloy rims. Consistent illustration series, generous transparent padding around entire car and all wheels, centered landscape composition, car occupies 85% of image width. Fully transparent background, no ground plane, no background rectangle, no captions, no text, no watermark. Subject: 2022-2024 Hyundai Tucson NX4 fourth-generation standard SUV. Actual compact SUV proportions about 4.63m length,1.865m width, tall enough to be clearly an SUV. Recognizable parametric jewel-like daytime running light segments integrated into dark grille, sculptural angular side body panels, gently sloping rear pillar. Normal factory proportions, not lifted, not a sedan.
+
+### santafe
+
+Use case: product-mockup. Asset type: transparent PNG vehicle illustration for an Android in-car parking-practice app. Create ONE isolated complete vehicle, facing left, front-left three-quarter view with SIDE dominating about 70 percent of visible body and front fascia 30 percent, eye height near headlights, long-lens perspective (85mm), very mild foreshortening. Professional restrained semi-realistic automotive editorial illustration: smooth clean shapes, subtle limited shading, no photoreal scene, no heavy black outlines, no cartoon/chibi/toy/low-poly/papercraft appearance. Preserve real-world stock body proportions, wheelbase, normal-size wheels and roof height; do not squeeze width, shorten body, inflate cabin or exaggerate perspective. Pearl silver body, charcoal glass, dark stock tires, restrained alloy rims. Consistent illustration series, generous transparent padding around entire car and all wheels, centered landscape composition, car occupies 85% of image width. Fully transparent background, no ground plane, no background rectangle, no captions, no text, no watermark. Subject: 2024 Hyundai Santa Fe MX5 fifth-generation SUV. Actual long upright boxy family SUV proportions about4.83m length,1.9m width. Recognizable two H-shaped front daytime running lights joined by dark horizontal grille band, flat long roof, squared wheel arches, upright rear hatch and large rectangular rear side windows. Clearly taller and more squared than Tucson, realistic stock ride height. Not a toy or pickup.
+
+## 최종 편집 프롬프트
+
+Edit this vehicle image into a moderately simplified automotive editorial illustration for an in-car app. CHANGE ONLY rendering style, not identity, camera, silhouette, stock proportions, length, roofline, wheelbase or wheel sizes. Keep the same left-facing low front three-quarter view and silver body. Reduce realism one clear step: replace complex photographic reflections with 3 to 5 broad flat tonal regions, soften and simplify surface shading, remove visible cabin/interior detail, simplify the grille to a few clean shapes and wheels to simple restrained spokes, remove fine panel seams and small trim. Keep the model's signature headlights, roofline and main body creases immediately recognizable. Target a polished modern 2D product illustration with subtle depth, not a photograph and not a toy/low-poly/cartoon/chibi/outline drawing. Do NOT compress, stretch, exaggerate or shorten any part of the vehicle. No dramatic highlights, no gloss, no texture grain, no ground or background. Preserve truly transparent background and the complete uncropped car. No text or watermark.
