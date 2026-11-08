@@ -28,6 +28,10 @@ class UiPreferences(context: Context, name: String = "driving_mate_ui") {
     var steeringUnit: SteeringUnit
         get() = SteeringUnit.entries.firstOrNull { it.name == prefs.getString("steering_unit", null) } ?: SteeringUnit.STEERING_WHEEL
         set(value) { prefs.edit().putString("steering_unit", value.name).apply() }
+    /** 랭킹에 올라갈 이름 (한 차를 여러 사람이 쓰면 바꿔서 기록) */
+    var driverName: String
+        get() = prefs.getString("driver_name", "나") ?: "나"
+        set(value) { prefs.edit().putString("driver_name", value).apply() }
     var invertSteering: Boolean
         get() = prefs.getBoolean("invert_steering", true)
         set(value) { prefs.edit().putBoolean("invert_steering", value).apply() }

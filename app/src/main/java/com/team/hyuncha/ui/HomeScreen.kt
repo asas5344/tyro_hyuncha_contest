@@ -29,6 +29,7 @@ import com.team.hyuncha.ui.theme.LocalAppTextScale
 fun HomeScreen(
     car: CarSpec, onChooseCar: () -> Unit, onSettings: () -> Unit, onStart: () -> Unit,
     mode: ParkingMode = ParkingMode.PERPENDICULAR, onModeChange: (ParkingMode) -> Unit = {},
+    onRanking: () -> Unit = {},
 ) {
     val colors = MaterialTheme.colorScheme
     val scale = (LocalDensity.current.fontScale * LocalAppTextScale.current).coerceAtLeast(1f)
@@ -51,6 +52,7 @@ fun HomeScreen(
                         }
                     }
                     AppButton("내 차", onChooseCar, Modifier.fillMaxWidth().testTag("choose_car_nav"), icon = "car")
+                    AppButton("랭킹", onRanking, Modifier.fillMaxWidth().testTag("open_ranking"), icon = "trophy")
                     AppButton("설정", onSettings, Modifier.fillMaxWidth().testTag("open_settings"), icon = "settings")
                     Spacer(Modifier.height(32.dp))
                     Text("천천히,\n자신 있게.", Modifier.padding(16.dp), color = colors.onSurfaceVariant,
@@ -75,7 +77,11 @@ fun HomeScreen(
                             .fillMaxWidth(if (compactHeader) 1f else .55f)) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Text("주차 연습", Modifier.weight(1f), style = MaterialTheme.typography.headlineLarge)
-                                if (!wide) AppButton("설정", onSettings, Modifier.testTag("open_settings"), icon = "settings")
+                                if (!wide) {
+                                    AppButton("랭킹", onRanking, Modifier.testTag("open_ranking"), icon = "trophy")
+                                    Spacer(Modifier.width(12.dp))
+                                    AppButton("설정", onSettings, Modifier.testTag("open_settings"), icon = "settings")
+                                }
                             }
                             Text("내 차로, 천천히 익혀요.", Modifier.padding(top = 8.dp),
                                 color = colors.onSurfaceVariant, style = MaterialTheme.typography.bodyLarge)

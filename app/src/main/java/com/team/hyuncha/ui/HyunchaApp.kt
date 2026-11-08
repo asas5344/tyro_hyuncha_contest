@@ -13,6 +13,7 @@ import androidx.compose.ui.unit.dp
 import com.team.hyuncha.data.AppTextSize
 import com.team.hyuncha.data.CarCamera
 import com.team.hyuncha.data.CarPresets
+import com.team.hyuncha.data.ScoreRecords
 import com.team.hyuncha.data.UiPreferences
 import com.team.hyuncha.input.SteeringUnit
 import com.team.hyuncha.sim.ParkingMode
@@ -20,7 +21,7 @@ import com.team.hyuncha.ui.theme.HyunchaTheme
 import com.team.hyuncha.ui.theme.LocalAppTextScale
 
 @Composable
-fun HyunchaApp(vehicle: Vehicle?, preferences: UiPreferences? = null) {
+fun HyunchaApp(vehicle: Vehicle?, preferences: UiPreferences? = null, scoreRecords: ScoreRecords? = null) {
     val context = LocalContext.current
     val store = remember(preferences, context) { preferences ?: UiPreferences(context) }
     var carName by rememberSaveable { mutableStateOf(store.carName) }
@@ -30,6 +31,8 @@ fun HyunchaApp(vehicle: Vehicle?, preferences: UiPreferences? = null) {
     var carCameraName by rememberSaveable { mutableStateOf(store.carCamera.name) }
     val carCamera = CarCamera.valueOf(carCameraName)
     var invertSteering by rememberSaveable { mutableStateOf(store.invertSteering) }
+    var driverName by rememberSaveable { mutableStateOf(store.driverName) }
+    val records = remember(scoreRecords, context) { scoreRecords ?: ScoreRecords(context) }
     val steeringUnit = SteeringUnit.valueOf(steeringUnitName)
     var screen by rememberSaveable { mutableStateOf("home") }
     var choosingCar by rememberSaveable { mutableStateOf(false) }
@@ -50,7 +53,8 @@ fun HyunchaApp(vehicle: Vehicle?, preferences: UiPreferences? = null) {
                             AppButton("홈으로", onClick = { screen = "home" },
                                 modifier = Modifier.padding(16.dp).testTag("back_home"), icon = "back")
                             ParkingScreen(vehicle, Modifier.weight(1f), initialCar = selectedCar, parkingMode = parkingMode,
-                                steeringUnit = steeringUnit, invertSteering = invertSteering, carCamera = carCamera)
+                                steeringUnit = steeringUnit, invertSteering = invertSteering, carCamera = carCamera,
+                                driverName = driverName, records = records)
                         }
                         "settings" -> SettingsScreen(textSize, dark,
                             onTextSizeChange = { textSizeName = it.name; store.textSize = it },
@@ -60,10 +64,14 @@ fun HyunchaApp(vehicle: Vehicle?, preferences: UiPreferences? = null) {
                             onInvertSteeringChange = { invertSteering = it; store.invertSteering = it },
                             carCamera = carCamera,
                             onCarCameraChange = { carCameraName = it.name; store.carCamera = it },
+                            driverName = driverName,
+                            onDriverNameChange = { driverName = it; store.driverName = it },
                             onBack = { screen = "home" })
+                        "ranking" -> RankingScreen(records, initialMode = parkingMode, onBack = { screen = "home" })
                         else -> HomeScreen(selectedCar, onChooseCar = { choosingCar = true },
                             onSettings = { screen = "settings" }, onStart = { screen = "parking" },
-                            mode = parkingMode, onModeChange = { parkingModeName = it.name })
+                            mode = parkingMode, onModeChange = { parkingModeName = it.name },
+                            onRanking = { screen = "ranking" })
                     }
                     if (choosingCar) CarSelectionSheet(selectedCar, onSelect = {
                         carName = it.name; store.carName = it.name; choosingCar = false

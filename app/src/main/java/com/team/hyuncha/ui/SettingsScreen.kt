@@ -15,6 +15,7 @@ import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.unit.dp
 import com.team.hyuncha.data.AppTextSize
 import com.team.hyuncha.data.CarCamera
+import com.team.hyuncha.data.Ranking
 import com.team.hyuncha.input.SteeringUnit
 
 @Composable
@@ -23,7 +24,8 @@ fun SettingsScreen(textSize: AppTextSize, dark: Boolean,
                    onDarkThemeChange: (Boolean) -> Unit, onBack: () -> Unit,
                    steeringUnit: SteeringUnit = SteeringUnit.STEERING_WHEEL, invertSteering: Boolean = true,
                    onSteeringUnitChange: (SteeringUnit) -> Unit = {}, onInvertSteeringChange: (Boolean) -> Unit = {},
-                   carCamera: CarCamera = CarCamera.REAR_ONLY, onCarCameraChange: (CarCamera) -> Unit = {}) {
+                   carCamera: CarCamera = CarCamera.REAR_ONLY, onCarCameraChange: (CarCamera) -> Unit = {},
+                   driverName: String = "나", onDriverNameChange: (String) -> Unit = {}) {
     val c = MaterialTheme.colorScheme
     Column(Modifier.fillMaxSize().testTag("settings_screen").verticalScroll(rememberScrollState()).padding(40.dp),
         verticalArrangement = Arrangement.spacedBy(24.dp)) {
@@ -32,6 +34,17 @@ fun SettingsScreen(textSize: AppTextSize, dark: Boolean,
             Text("설정", style = MaterialTheme.typography.headlineLarge)
         }
         Spacer(Modifier.height(8.dp))
+        // 랭킹에 올라갈 이름. 한 차를 가족이 같이 쓰면 연습하는 사람 이름으로 바꿔 둠
+        Text("운전자 이름", style = MaterialTheme.typography.headlineMedium)
+        Text("주차에 성공하면 이 이름으로 랭킹에 기록돼요. 여러 사람이 같이 쓰면 연습하는 사람 이름으로 바꿔 주세요.",
+            color = c.onSurfaceVariant, style = MaterialTheme.typography.bodyLarge)
+        OutlinedTextField(
+            value = driverName,
+            onValueChange = { onDriverNameChange(it.replace("\n", "").take(Ranking.MAX_NAME_LENGTH)) },
+            singleLine = true,
+            textStyle = MaterialTheme.typography.titleLarge,
+            modifier = Modifier.fillMaxWidth().testTag("driver_name"),
+        )
         Text("글자 크기", style = MaterialTheme.typography.headlineMedium)
         Text("선택한 크기는 바로 반영되고, 앱을 다시 켜도 유지돼요.",
             color = c.onSurfaceVariant, style = MaterialTheme.typography.bodyLarge)
