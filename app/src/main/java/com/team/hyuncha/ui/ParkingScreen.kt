@@ -232,6 +232,12 @@ fun ParkingScreen(
                 else if (cmd == VoiceCommand.SHOW_MODEL && plan == null) "모범 주행을 계산하고 있어요"
                 else { startReplay(model = cmd == VoiceCommand.SHOW_MODEL); "\"$said\" → ${cmd.label}" }
             VoiceCommand.CLOSE -> { replaying = false; "\"$said\" → ${cmd.label}" }
+            // 앱은 실제 기어를 P에 둔 채로 쓰므로 P로 바꿀 일은 없음 → 안내만
+            VoiceCommand.PARK_INFO -> "실제 기어는 P 그대로 두고, 전진·후진은 \"${VoiceCommand.FORWARD.phrase}\" / \"${VoiceCommand.REVERSE.phrase}\"로 바꿔요"
+            VoiceCommand.TOGGLE_DIRECTION -> {
+                input.direction = if (input.direction == Direction.FORWARD) Direction.REVERSE else Direction.FORWARD
+                "\"$said\" → ${input.direction.label}으로"
+            }
             else -> {
                 when (cmd) {
                     VoiceCommand.FORWARD -> input.direction = Direction.FORWARD

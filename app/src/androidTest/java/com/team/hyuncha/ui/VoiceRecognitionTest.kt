@@ -71,6 +71,9 @@ class VoiceRecognitionTest {
             "voice_forward.pcm" to VoiceCommand.FORWARD,       // "앞으로 갈게"
             "voice_look_front.pcm" to VoiceCommand.LOOK_FRONT, // "앞을 보여 줘"
             "voice_close.pcm" to VoiceCommand.CLOSE,           // "그만 보기"
+            "voice_gear_r.pcm" to VoiceCommand.REVERSE,        // "기어 R로 바꿔줘" → "기아 r로 바꿔 줘"
+            "voice_gear_p.pcm" to VoiceCommand.PARK_INFO,      // "P로 바꿔줘"
+            "voice_toggle.pcm" to VoiceCommand.TOGGLE_DIRECTION, // "방향 바꿔 줘"
         )
         val results = cases.map { (asset, expected) -> Triple(asset, expected, recognize(asset)) }
         results.forEach { (asset, expected, text) ->
