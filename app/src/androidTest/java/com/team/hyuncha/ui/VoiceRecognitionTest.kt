@@ -64,10 +64,13 @@ class VoiceRecognitionTest {
 
     @Test fun 녹음한_명령을_알아듣는다() {
         val cases = listOf(
-            "voice_reverse.pcm" to VoiceCommand.REVERSE,
+            "voice_reverse.pcm" to VoiceCommand.REVERSE,       // "후진해 줘"
             "voice_left_mirror.pcm" to VoiceCommand.LOOK_LEFT,
             "voice_restart.pcm" to VoiceCommand.RESTART,
             "voice_top_view.pcm" to VoiceCommand.TOP_VIEW,     // "위에서 보기"
+            "voice_forward.pcm" to VoiceCommand.FORWARD,       // "앞으로 갈게"
+            "voice_look_front.pcm" to VoiceCommand.LOOK_FRONT, // "앞을 보여 줘"
+            "voice_close.pcm" to VoiceCommand.CLOSE,           // "그만 보기"
         )
         val results = cases.map { (asset, expected) -> Triple(asset, expected, recognize(asset)) }
         results.forEach { (asset, expected, text) ->

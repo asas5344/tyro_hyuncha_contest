@@ -21,6 +21,7 @@ import java.util.Locale
  * - 마이크 버튼을 누르면 한 번 듣고, 말이 끝나면(SDK가 끝을 감지) 결과를 onCommand로 알려줌
  * - 에뮬레이터 확인(2026-11-07): 아무 말이 없으면 SDK가 끝없이 들음 → LISTEN_TIMEOUT_MS 뒤 앱이 멈춤.
  *   stop()을 불러도 onEndedRecognition이 오지 않음 → 멈출 때 상태는 앱이 직접 정리.
+ *   실제 마이크로 말하면 onEndedRecognition이 최종 onUpdated보다 먼저 오기도 함 → 끝날 때 들린 말로 판단.
  * SDK 콜백이 어느 스레드에서 오는지 문서에 없어서 화면 상태는 항상 메인 스레드에서 바꿈.
  */
 class VoiceInput(context: Context) {
@@ -70,13 +71,14 @@ class VoiceInput(context: Context) {
         override fun onUpdatedRms(rms: Double) = Unit
         override fun onEndedRecognition() = post {
             Log.d(TAG, "인식 끝")
-            // 아무 말도 안 했거나 최종 결과 없이 끝나면 못 알아들은 것으로 알려줌
-            finish(null, heard)
+            // 에뮬레이터 확인: "인식 끝"이 최종 결과(completed=true)보다 먼저 오기도 함 → 그때까지 들린 말로 판단
+            // (아무 말도 없었으면 heard가 비어 있어서 못 알아들은 것으로 알려줌)
+            finish(VoiceCommands.parse(heard), heard)
         }
         override fun onError(errorType: ErrorType) = post {
             Log.w(TAG, "오류: $errorType")
             error = errorType.name
-            finish(null, heard)
+            finish(VoiceCommands.parse(heard), heard)
         }
     }
 

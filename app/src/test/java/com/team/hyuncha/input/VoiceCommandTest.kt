@@ -33,6 +33,18 @@ class VoiceCommandTest {
         check(VoiceCommand.CLOSE, "닫기", "그만")
     }
 
+    /** 에뮬레이터 엔진이 실제로 돌려준 글자 (녹음 파일로 확인) */
+    @Test fun 엔진이_잘못_들은_말도_알아듣는다() {
+        check(VoiceCommand.REVERSE, "효진", "후진해져", "후진 기억")
+        check(VoiceCommand.FORWARD, "1000진", "선진 기억", "앞으로 갈게", "드라이브 기어")
+        check(VoiceCommand.LOOK_FRONT, "앞으로 보여줘")      // "앞을 보여 줘"가 이렇게 들림 → 전진이 되면 안 됨
+        check(VoiceCommand.CLOSE, "그만 보기")
+    }
+
+    @Test fun 대표_말투는_모두_자기_명령으로_해석된다() {
+        VoiceCommand.entries.forEach { assertEquals(it.phrase, it, VoiceCommands.parse(it.phrase)) }
+    }
+
     @Test fun 문장부호와_빈_말() {
         check(VoiceCommand.REVERSE, "후진!", "후진.")
         assertNull(VoiceCommands.parse(""))
