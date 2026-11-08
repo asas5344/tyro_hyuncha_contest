@@ -304,7 +304,7 @@ def generate(key,design):
     return side_point(u,t,.006)
    g.surface('opera_pillar_'+str(side),opera_pillar,24,4,0)
   box('door_card_'+str(side),(wf+cr)/2,body-.16,side*w*.83,wf-cr-.12,.22,.05,4)
-  
+
   def shell_z(xx,yy):
    index=next(i for i in range(len(sections)-1) if sections[i][0]<=xx<=sections[i+1][0])
    widths=[]
@@ -326,7 +326,7 @@ def generate(key,design):
     a=.30+(belt-.33)*i/24;b=.30+(belt-.33)*(i+1)/24
     beam('door_seam_'+str(side),(seam_x,a,side*(shell_z(seam_x,a)+.004)),(seam_x,b,side*(shell_z(seam_x,b)+.004)),.0014,5)
   beam('window_lower_trim_'+str(side),(cr,belt-.005,z),(wf,belt-.005,z),.007,10)
-  
+
   for i in range(32):
    a=i/32;b=(i+1)/32
    beam('window_upper_trim_'+str(side),side_point(a,1,.008),side_point(b,1,.008),.004,10)

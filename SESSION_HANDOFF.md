@@ -4,7 +4,7 @@
 
 ```text
 /Users/gimmin-u/StudioProjects/Hyuncha/SESSION_HANDOFF.md를 먼저 읽고 기존 3D 주차 앱 작업을 이어가줘.
-작업 브랜치는 feature/realistic이고 미커밋 변경과 새 파일이 많으니 모두 보존해.
+작업 브랜치는 feature/realistic이며 원본 경로로 통합한 상태야. 기존 작업과 자산을 보존하고 의미 있는 단위로 커밋해.
 기존 주행·충돌·주차 판정과 운전석 조작 방식을 유지하면서 실제 3D 표현을 개선하는 작업이야.
 안내창과 시점 버튼은 사용자 확인 완료이며,
 미러·후방 화면·다시 보기 통합 검증을 이어가줘. 이미 승인한 그랜저 외형은 다시 만들지 마.
@@ -134,3 +134,13 @@ JAVA_HOME='/Applications/Android Studio.app/Contents/jbr/Contents/Home' ./gradle
 ## 이전 문서의 우선순위
 
 이 문서가 최신 인수인계다. `MODEL_WORK_PAUSED.md`, `docs/realistic-3d.md`, `verification/mirrors/README.md`에는 과거 기록이 섞여 있다. 특히 예전의 “에뮬레이터 재개 금지”, “정면FOV64”, “Android 미검증”은 후속 사용자 요청·수정으로 갱신되었다. 취소된 웹 작업은 계속 취소 상태다.
+
+## 원본 프로젝트 통합 — 2026-11-09
+
+- 사용자 요청에 따라 원본 `/Users/gimmin-u/StudioProjects/Hyuncha`의 `feature/realistic`에서 작업한다.
+- 기존 별도 realistic 작업본은 미커밋 파일을 보존한 detached HEAD 상태이며 더 이상 주 작업 경로가 아니다.
+- 통합 커밋: `73cc38f`. 원본에 있던 주석 빈 줄 변경도 보존했다.
+- 원본 경로에서 `:app:assembleDebug`, `:app:testDebugUnitTest` 성공. 단위 테스트 70개 통과, 실패·오류·건너뜀 0개.
+- 브레이크 안내창과 세 시점 버튼은 사용자 직접 확인으로 정상 동작 확인 완료.
+- GitHub push는 아직 하지 않았다. 과거 중간 검증 렌더는 로컬에 보존하고 Git 추적에서 제외했다.
+- 원본 경로에서 `Parking3DTest#realFramesSurviveDrivingViewChangesAndBackground` 실행은 실패: `Instrumentation run failed due to Process crashed`. 같은 시간대 에뮬레이터 Car service 및 여러 시스템 프로세스 종료 로그가 있어 환경 문제와 앱 문제를 아직 구분하지 못했다. 통합 검증 완료로 간주하지 않는다. 상세 로그는 `app/build/outputs/androidTest-results/connected/debug/`에 있다.

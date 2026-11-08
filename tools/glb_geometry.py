@@ -140,4 +140,3 @@ class Glb:
   j=json.dumps(g,separators=(',',':'),ensure_ascii=False).encode();j+=b' '*((-len(j))%4);self.blob.extend(b'\0'*((-len(self.blob))%4))
   result=struct.pack('<III',0x46546c67,2,28+len(j)+len(self.blob))+struct.pack('<II',len(j),0x4e4f534a)+j+struct.pack('<II',len(self.blob),0x004e4942)+self.blob
   path.write_bytes(result);print(f'{path.name}: {len(self.nodes)} nodes, {len(result)} bytes')
-
