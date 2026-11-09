@@ -46,7 +46,7 @@ class HardModeTest {
     @Test fun 하드_모드_통로는_일반_모드보다_좁다() {
         val normal = ParkingMaps.perpendicular()
         val normalAisle = normal.slot.center.y - normal.slot.halfLength
-        for (situation in listOf(HardSituation.ENCROACH, HardSituation.DOUBLE_PARKED)) {
+        for (situation in HardSituation.entries) {
             val hard = ParkingMaps.hard(4, situation, -1)
             val hardAisle = hard.slot.center.y - hard.slot.halfLength
             assertEquals(0.3, normalAisle - hardAisle, 1e-9)
@@ -58,10 +58,6 @@ class HardModeTest {
     }
 
     @Test fun 상황별_주차장_모양() {
-        val pillar = ParkingMaps.hard(3, HardSituation.PILLAR, -1)
-        assertEquals(1, pillar.pillars.size)
-        assertTrue("기둥은 목표 칸 입구 옆 통로 쪽", pillar.pillars[0].center.y < pillar.slot.center.y - pillar.slot.halfLength)
-
         val enc = ParkingMaps.hard(3, HardSituation.ENCROACH, 1)
         val normal = ParkingMaps.hard(3, HardSituation.DOUBLE_PARKED, 1)
         val neighborX = enc.slot.center.x + ParkingMaps.HARD_SLOT_W
@@ -75,12 +71,30 @@ class HardModeTest {
         assertTrue("통로에 가로로 선 차", dbl.parkedCars.any { abs(it.angle) < 1e-9 && it.center.y < dbl.slot.center.y - dbl.slot.halfLength })
     }
 
+    @Test fun 기둥은_서로_떨어진_두_칸_사이에서_통로를_침범하지_않는다() {
+        val gaps = mutableSetOf<Int>()
+        repeat(100) { seed ->
+            val map = ParkingMaps.randomHard(Random(seed), HardSituation.PILLAR)
+            val pillar = map.pillars.single()
+            val left = map.bays.last { it.center.x < pillar.center.x }
+            val right = map.bays.first { it.center.x > pillar.center.x }
+            val leftEdge = left.center.x + left.halfWidth
+            val rightEdge = right.center.x - right.halfWidth
+            val slotTop = map.slot.center.y - map.slot.halfLength
+            assertTrue(map.slot == left || map.slot == right)
+            assertTrue(pillar.corners().all { it.x in leftEdge..rightEdge && it.y >= slotTop })
+            assertTrue(listOf(leftEdge, rightEdge).all { x -> map.lines.any { abs(it.first.x - x) < 1e-9 } })
+            gaps += map.bays.indexOf(right)
+        }
+        assertTrue("기둥이 여러 칸 사이에 배치됨", gaps.size > 1)
+    }
+
     /** 가장 중요: 나올 수 있는 모든 조합을 모든 차종이 표준 방법으로 제한시간 안에 넣을 수 있어야 함 */
     @Test fun 나올_수_있는_모든_조합을_모든_차종이_주차할_수_있다() {
-        val combos = ParkingMaps.PILLAR_SIDES.map { HardSituation.PILLAR to it } +
-            ParkingMaps.ENCROACH_SIDES.map { HardSituation.ENCROACH to it }
         val failures = mutableListOf<String>()
         for (target in ParkingMaps.HARD_TARGET_RANGE) for (car in CarPresets.all) {
+            val combos = ParkingMaps.pillarSides(target).map { HardSituation.PILLAR to it } +
+                ParkingMaps.ENCROACH_SIDES.map { HardSituation.ENCROACH to it }
             for ((s, side) in combos) {
                 val plan = Coach.solve(car, ParkingMaps.hard(target, s, side))
                 if (plan == null || plan.run.clockSec > 40) failures += "$s side=$side t$target ${car.name}"
