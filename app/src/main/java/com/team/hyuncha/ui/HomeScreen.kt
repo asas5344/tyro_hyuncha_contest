@@ -93,8 +93,6 @@ fun HomeScreen(
                             SelectedCar(car, onChooseCar, Modifier.width(carWidth))
                         }
                     }
-                    Spacer(Modifier.height(16.dp))
-                    HardModeChoice(hardMode, onHardModeChange, hardSituation, onHardSituationChange)
                     Box(Modifier.fillMaxWidth().height(diameter + 28.dp), contentAlignment = Alignment.Center) {
                         EngineStartButton(onStart, Modifier.size(diameter).testTag("start_practice"))
                     }
@@ -128,7 +126,8 @@ fun HomeScreen(
                     }
                     Text("P단을 유지하고, 전진·후진은 앱에서 선택하세요.", Modifier.padding(top = 18.dp),
                         color = colors.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
-                    Spacer(Modifier.height(12.dp))
+                    Spacer(Modifier.height(16.dp))
+                    HardModeChoice(hardMode, onHardModeChange, hardSituation, onHardSituationChange)
                 }
             }
         }

@@ -6,6 +6,7 @@ import androidx.compose.ui.graphics.asAndroidBitmap
 import java.io.File
 import java.io.FileOutputStream
 import androidx.compose.ui.test.*
+import androidx.compose.ui.unit.DpRect
 import androidx.compose.ui.unit.height
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.test.platform.app.InstrumentationRegistry
@@ -43,22 +44,27 @@ class HyunchaNavigationTest {
     }
     private fun openApp() { compose.setContent { HyunchaApp(vehicle = null, preferences = store) }; settle() }
 
-    @Test fun hardModeAndSituationPickerFitOnHomeWithoutScrolling() {
+    @Test fun hardModeFitsBelowParkingChoicesAndKeepsStartButtonFixed() {
         store.textSize = AppTextSize.EXTRA_LARGE
         openApp()
         val home = compose.onNodeWithTag("home_screen").getUnclippedBoundsInRoot()
-        fun assertWithinHome(tag: String) {
+        fun assertWithinHome(tag: String): DpRect {
             val node = compose.onNodeWithTag(tag).assertIsDisplayed().getUnclippedBoundsInRoot()
             assertTrue("$tag should fit on home: $node inside $home",
                 node.top >= home.top && node.bottom <= home.bottom &&
                     node.left >= home.left && node.right <= home.right)
+            return node
         }
-        assertWithinHome("hard_mode")
+        val start = assertWithinHome("start_practice")
+        val modesBottom = assertWithinHome("mode_DIAGONAL").bottom
+        assertTrue(assertWithinHome("hard_mode").top >= modesBottom)
         compose.onNodeWithTag("hard_mode").performClick(); settle()
-        assertWithinHome("hard_mode")
+        assertTrue(assertWithinHome("hard_mode").top >= modesBottom)
         listOf("RANDOM", "PILLAR", "ENCROACH", "DOUBLE_PARKED").forEach { assertWithinHome("hard_pick_$it") }
-        assertWithinHome("start_practice")
+        assertEquals(start, assertWithinHome("start_practice"))
         capture("home_screen", "home-hard-mode.png")
+        compose.onNodeWithTag("hard_mode").performClick(); settle()
+        assertEquals(start, assertWithinHome("start_practice"))
     }
 
     @Test fun rankingShowsRecordsByModeInScoreOrder() {
