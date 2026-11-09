@@ -101,6 +101,14 @@ internal fun OutlineIcon(kind: String, modifier: Modifier = Modifier, color: Col
                 // 기둥과 받침
                 line(16f,19f,16f,24f); line(11f,27f,21f,27f); line(12f,24f,20f,24f)
             }
+            "mic" -> {
+                // 마이크 머리
+                path.addRoundRect(androidx.compose.ui.geometry.RoundRect(12f*u, 4f*u, 20f*u, 19f*u, 4f*u, 4f*u))
+                // 받침
+                line(8f,15f); path.cubicTo(8f*u,21f*u,11f*u,23f*u,16f*u,23f*u)
+                path.cubicTo(21f*u,23f*u,24f*u,21f*u,24f*u,15f*u)
+                line(16f,23f,16f,28f); line(12f,28f,20f,28f)
+            }
             "check" -> line(5f,16f,12f,23f,27f,8f)
             "chevron" -> line(12f,6f,22f,16f,12f,26f)
             "back" -> { line(26f,16f,5f,16f); line(14f,7f,5f,16f,14f,25f) }
