@@ -67,7 +67,7 @@ fun HomeScreen(
             }
             BoxWithConstraints(Modifier.weight(1f).fillMaxHeight().testTag("home_content")) {
                 val compactHeader = maxWidth < 850.dp
-                val diameter = minOf(controlHeight(if (maxHeight < 850.dp) 200.dp else 260.dp), 260.dp)
+                val diameter = minOf(controlHeight(if (maxHeight < 850.dp) 212.dp else 276.dp), 276.dp)
                 val contentPadding = 24.dp
                 val headerAreaHeight = ((maxHeight - diameter) / 2 - contentPadding).coerceAtLeast(0.dp)
                 Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())
@@ -171,13 +171,17 @@ private fun HardModeChoice(
         .toggleable(value = on, role = Role.Switch, onValueChange = onChange),
         shape = RoundedCornerShape(18.dp), color = if (on) c.surfaceVariant else c.surface) {
         Column(Modifier.padding(horizontal = HardModeHorizontalPadding, vertical = 12.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            Row(Modifier.heightIn(min = 52.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text("하드 모드", Modifier.weight(1f), style = MaterialTheme.typography.titleMedium,
                     fontWeight = if (on) FontWeight.Bold else FontWeight.Normal, color = c.onSurface)
                 Text(if (on) "켜짐 · T자 주차" else "꺼짐", color = c.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
                 Spacer(Modifier.width(12.dp))
                 Switch(
-                    checked = on, onCheckedChange = null, modifier = Modifier.testTag("hard_mode_switch"),
+                    checked = on, onCheckedChange = null,
+                    modifier = Modifier.testTag("hard_mode_switch").graphicsLayer {
+                        scaleX = 1.15f
+                        scaleY = 1.15f
+                    },
                     colors = SwitchDefaults.colors(
                         checkedTrackColor = if (darkTheme) Color(0xFF00E074) else Color(0xFF02C265),
                         checkedThumbColor = Color.White,
@@ -206,7 +210,7 @@ private fun HardSituationPicker(situation: HardSituation?, onChange: (HardSituat
                     selected = situation == s,
                     onClick = { onChange(s) },
                     label = { Text(s?.label ?: "랜덤") },
-                    modifier = Modifier.testTag("hard_pick_${s?.name ?: "RANDOM"}"),
+                    modifier = Modifier.heightIn(min = 48.dp).testTag("hard_pick_${s?.name ?: "RANDOM"}"),
                 )
             }
         }
@@ -256,7 +260,7 @@ private fun EngineStartButton(onStart: () -> Unit, modifier: Modifier) {
 @Composable
 private fun ParkingChoice(title: String, selected: Boolean, enabled: Boolean, onClick: () -> Unit, modifier: Modifier) {
     val c = MaterialTheme.colorScheme
-    Surface(onClick = onClick, enabled = enabled, modifier = modifier.heightIn(min = controlHeight(88.dp)),
+    Surface(onClick = onClick, enabled = enabled, modifier = modifier.heightIn(min = controlHeight(104.dp)),
         shape = RoundedCornerShape(18.dp),
         color = if (selected) c.surfaceVariant else c.surface,
         contentColor = if (selected) c.onSurface else c.onSurfaceVariant,
