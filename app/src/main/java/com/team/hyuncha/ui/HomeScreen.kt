@@ -18,6 +18,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
@@ -64,12 +65,14 @@ fun HomeScreen(
                         style = MaterialTheme.typography.bodyMedium)
                 }
             }
-            BoxWithConstraints(Modifier.weight(1f).fillMaxHeight()) {
+            BoxWithConstraints(Modifier.weight(1f).fillMaxHeight().testTag("home_content")) {
                 val compactHeader = maxWidth < 850.dp
-                val diameter = controlHeight(if (maxHeight < 850.dp) 200.dp else 260.dp)
+                val diameter = minOf(controlHeight(if (maxHeight < 850.dp) 200.dp else 260.dp), 260.dp)
+                val contentPadding = 24.dp
+                val headerAreaHeight = ((maxHeight - diameter) / 2 - contentPadding).coerceAtLeast(0.dp)
                 Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())
                     .heightIn(min = maxHeight)
-                    .padding(if (wide) 44.dp else 24.dp, 24.dp)) {
+                    .padding(if (wide) 44.dp else 24.dp, contentPadding)) {
                     val heading: @Composable (Modifier) -> Unit = { modifier ->
                         Column(modifier) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -82,25 +85,31 @@ fun HomeScreen(
                             }
                             Text("내 차로, 천천히 익혀요.", Modifier.padding(top = 8.dp),
                                 color = colors.onSurfaceVariant, style = MaterialTheme.typography.bodyLarge)
+                            Text("P단을 유지하고, 전진·후진은 앱에서 선택하세요.", Modifier.padding(top = 12.dp),
+                                color = colors.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
                         }
                     }
                     val carWidth = if (scale > 1.2f) 460.dp else 420.dp
+                    // 헤더가 더 많은 공간을 필요로 하는 작은 화면에서는 본문을 스크롤한다.
+                    val headerArea = Modifier.fillMaxWidth().heightIn(min = headerAreaHeight)
                     if (compactHeader) {
-                        Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Column(headerArea, verticalArrangement = Arrangement.spacedBy(12.dp)) {
                             heading(Modifier.fillMaxWidth())
                             SelectedCar(car, onChooseCar, Modifier.width(carWidth))
                         }
                     } else {
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(24.dp)) {
+                        Row(headerArea, horizontalArrangement = Arrangement.spacedBy(24.dp)) {
                             heading(Modifier.weight(1f))
                             SelectedCar(car, onChooseCar, Modifier.width(carWidth))
                         }
                     }
-                    Box(Modifier.fillMaxWidth().height(diameter + 28.dp), contentAlignment = Alignment.Center) {
+                    Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
                         EngineStartButton(onStart, Modifier.size(diameter).testTag("start_practice"))
                     }
+                    Spacer(Modifier.height(8.dp))
+                    Spacer(Modifier.weight(1f))
                     Text("연습할 주차 방식", style = MaterialTheme.typography.titleMedium)
-                    Spacer(Modifier.height(16.dp))
+                    Spacer(Modifier.height(8.dp))
                     // T자(직각)·평행·사선 주차 모두 선택 가능하다.
                     val perpendicular: @Composable (Modifier) -> Unit = { m ->
                         ParkingChoice(ParkingMode.PERPENDICULAR.label, mode == ParkingMode.PERPENDICULAR, true,
@@ -127,16 +136,25 @@ fun HomeScreen(
                         Spacer(Modifier.height(12.dp))
                         diagonal(Modifier.fillMaxWidth())
                     }
-                    Text("P단을 유지하고, 전진·후진은 앱에서 선택하세요.", Modifier.padding(top = 18.dp),
-                        color = colors.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
-                    Spacer(Modifier.height(16.dp))
-                    Spacer(Modifier.weight(1f))
+                    Spacer(Modifier.height(8.dp))
                     HardModeChoice(hardMode, onHardModeChange, hardSituation, onHardSituationChange)
+                    if (!hardMode) {
+                        // 접혀도 펼쳐질 높이를 카드 아래에 남겨 주차 방식과 카드 상단을 고정한다.
+                        Layout(
+                            content = { HardSituationPicker(hardSituation, onHardSituationChange) },
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = HardModeHorizontalPadding),
+                        ) { measurables, constraints ->
+                            val picker = measurables.single().measure(constraints)
+                            layout(picker.width, picker.height) {}
+                        }
+                    }
                 }
             }
         }
     }
 }
+
+private val HardModeHorizontalPadding = 24.dp
 
 /**
  * 하드 모드 (T자 주차만): 제한시간 40초 · 8km/h · 클락션 · 좁은 칸 + 랜덤 상황.
@@ -152,7 +170,7 @@ private fun HardModeChoice(
         .toggleable(value = on, role = Role.Switch, onValueChange = onChange),
         shape = RoundedCornerShape(24.dp), color = if (on) c.surfaceVariant else c.surface,
         border = if (on) BorderStroke(2.dp, Color(0xFFFF6B6B)) else null) {
-        Column(Modifier.padding(horizontal = 24.dp, vertical = 16.dp)) {
+        Column(Modifier.padding(horizontal = HardModeHorizontalPadding, vertical = 12.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("하드 모드", Modifier.weight(1f), style = MaterialTheme.typography.titleMedium,
                     fontWeight = if (on) FontWeight.Bold else FontWeight.Normal, color = if (on) Color(0xFFFF6B6B) else c.onSurface)
@@ -160,7 +178,7 @@ private fun HardModeChoice(
                 Spacer(Modifier.width(12.dp))
                 Switch(checked = on, onCheckedChange = null, modifier = Modifier.testTag("hard_mode_switch"))
             }
-            Text("T자 주차 · 제한시간 40초 · 속도 8km/h · 클락션 3번 · 좁은 칸 + 랜덤 상황(기둥 옆 / 옆 차 침범 / 이중주차)",
+            Text("T자 주차 · 40초 · 8km/h · 클락션 3번 · 좁은 칸 · 랜덤 상황",
                 Modifier.padding(top = 6.dp), color = c.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
             if (on) HardSituationPicker(situation, onSituationChange)
         }
@@ -171,7 +189,7 @@ private fun HardModeChoice(
 @Composable
 @OptIn(ExperimentalLayoutApi::class)
 private fun HardSituationPicker(situation: HardSituation?, onChange: (HardSituation?) -> Unit) {
-    Column(Modifier.padding(top = 12.dp)) {
+    Column(Modifier.padding(top = 8.dp)) {
         Text("상황 고르기 (확인용)", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
         FlowRow(Modifier.padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             (listOf<HardSituation?>(null) + HardSituation.entries).forEach { s ->
@@ -233,12 +251,12 @@ private fun EngineStartButton(onStart: () -> Unit, modifier: Modifier) {
 @Composable
 private fun ParkingChoice(title: String, selected: Boolean, enabled: Boolean, onClick: () -> Unit, modifier: Modifier) {
     val c = MaterialTheme.colorScheme
-    Surface(onClick = onClick, enabled = enabled, modifier = modifier.heightIn(min = controlHeight(120.dp)),
+    Surface(onClick = onClick, enabled = enabled, modifier = modifier.heightIn(min = controlHeight(88.dp)),
         shape = RoundedCornerShape(24.dp),
         color = if (selected) c.surfaceVariant else c.surface,
         contentColor = if (selected) c.onSurface else c.onSurfaceVariant,
         border = if (selected) BorderStroke(2.dp, c.primary) else null) {
-        Row(Modifier.padding(24.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.padding(horizontal = 24.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
             if (selected) {
                 OutlineIcon("check", Modifier.size(28.dp)); Spacer(Modifier.width(16.dp))
             }

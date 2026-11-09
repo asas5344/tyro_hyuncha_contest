@@ -45,10 +45,19 @@ class HyunchaNavigationTest {
     }
     private fun openApp() { compose.setContent { HyunchaApp(vehicle = null, preferences = store) }; settle() }
 
-    @Test fun hardModeStaysAtHomeBottomAndKeepsStartButtonFixed() {
-        store.textSize = AppTextSize.EXTRA_LARGE
+    @Test fun hardModeExpandsDownwardBelowCenteredStart() {
+        verifyHardModeLayout(AppTextSize.STANDARD)
+    }
+
+    @Test fun hardModeExpandsDownwardWithExtraLargeText() {
+        verifyHardModeLayout(AppTextSize.EXTRA_LARGE)
+    }
+
+    private fun verifyHardModeLayout(textSize: AppTextSize) {
+        store.textSize = textSize
         openApp()
         val home = compose.onNodeWithTag("home_screen").getUnclippedBoundsInRoot()
+        val content = compose.onNodeWithTag("home_content").getUnclippedBoundsInRoot()
         fun assertWithinHome(tag: String): DpRect {
             val node = compose.onNodeWithTag(tag).assertIsDisplayed().getUnclippedBoundsInRoot()
             assertTrue("$tag should fit on home: $node inside $home",
@@ -57,23 +66,27 @@ class HyunchaNavigationTest {
             return node
         }
         val start = assertWithinHome("start_practice")
-        val modesBottom = assertWithinHome("mode_DIAGONAL").bottom
+        assertEquals(((content.left + content.right) / 2).value, ((start.left + start.right) / 2).value, 1f)
+        assertEquals(((content.top + content.bottom) / 2).value, ((start.top + start.bottom) / 2).value, 1f)
+        val modesBottom = ParkingMode.entries.maxOf { assertWithinHome("mode_${it.name}").bottom }
         val collapsedCard = assertWithinHome("hard_mode")
-        assertEquals((home.bottom - 24.dp).value, collapsedCard.bottom.value, 1f)
+        assertEquals((modesBottom + 8.dp).value, collapsedCard.top.value, 1f)
         val card = compose.onNodeWithTag("hard_mode").assertIsOff()
         val switch = compose.onNodeWithTag("hard_mode_switch", useUnmergedTree = true).assertIsDisplayed()
         switch.performTouchInput { click() }; settle()
         card.assertIsOn()
         val expandedCard = assertWithinHome("hard_mode")
-        assertTrue(expandedCard.top >= modesBottom)
-        assertEquals(collapsedCard.bottom, expandedCard.bottom)
+        assertEquals(collapsedCard.top, expandedCard.top)
+        assertTrue(expandedCard.bottom > collapsedCard.bottom)
+        assertEquals((home.bottom - 24.dp).value, expandedCard.bottom.value, 1f)
         listOf("RANDOM", "PILLAR", "ENCROACH", "DOUBLE_PARKED").forEach { assertWithinHome("hard_pick_$it") }
         assertEquals(start, assertWithinHome("start_practice"))
-        capture("home_screen", "home-hard-mode.png")
+        capture("home_screen", "home-hard-mode-${textSize.name}-on.png")
         switch.performTouchInput { click() }; settle()
         card.assertIsOff()
         assertEquals(collapsedCard, assertWithinHome("hard_mode"))
         assertEquals(start, assertWithinHome("start_practice"))
+        capture("home_screen", "home-hard-mode-${textSize.name}-off.png")
     }
 
     @Test fun rankingShowsRecordsByModeInScoreOrder() {
