@@ -9,7 +9,6 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.selected
@@ -67,26 +66,35 @@ fun RealisticParkingView(
                 } },
             )
         }
+        // 미니맵 자리 (화면 크기에 대한 비율). 후진하면 같은 자리에 후방 카메라·서라운드 뷰를 띄움
+        val miniTop=if(LookButtons.side==LookSide.FRONT) .35f else .70f
+        val miniRect=PipRect(.02f,miniTop,.24f,.24f*.66f*maxWidth.value/maxHeight.value)
+        // 후진 중이고 화면 확대를 안 했으면 미니맵 대신 내 차 카메라 화면
+        val reverseCamera={
+            val reverse=sceneOf(sim,currentReplay(),currentDirection(),currentBraking()).direction==Direction.REVERSE
+            if(reverse && !focusRear) carCamera else null
+        }
         // Read simulation state in a small scope, not in the AndroidView factory.
         RenderSync(renderer) {
             currentFrame()
             val scene=sceneOf(sim,currentReplay(),currentDirection(),currentBraking())
-            RenderState(scene.pose,scene.wheelAngleDeg,LookButtons.side,scene.direction,carCamera,scene.showGuide,focusRear,scene.speedMps,scene.braking)
+            RenderState(scene.pose,scene.wheelAngleDeg,LookButtons.side,scene.direction,carCamera,scene.showGuide,focusRear,scene.speedMps,scene.braking,miniRect)
         }
         DriverMinimap(sim,currentFrame,currentDirection,currentBraking,currentReplay,
-            Modifier.offset(x=maxWidth*.02f,y=maxHeight*(if(LookButtons.side==LookSide.FRONT) .35f else .70f)).width(maxWidth*.24f).aspectRatio(1f/.66f))
+            Modifier.offset(x=maxWidth*miniRect.left,y=maxHeight*miniRect.top).width(maxWidth*miniRect.width).aspectRatio(1f/.66f),
+            reverseCamera=reverseCamera)
         if(error!=null) Surface(Modifier.align(Alignment.Center).padding(24.dp)) {
             Text("3D 화면을 열 수 없어요. 탑뷰로 전환한 뒤 다시 시도해 주세요.",Modifier.padding(20.dp))
         }
-        Surface(
+        // 화면에는 안 보이고, 자동 테스트가 3D 준비 완료를 확인하는 표시
+        if(ready) Spacer(Modifier.size(0.dp).testTag("parking3d_ready"))
+        // 시점·차종은 왼쪽 위 정보 상자에 나오므로, 여기는 3D를 불러오는 동안만 안내
+        if(!ready) Surface(
             Modifier.align(Alignment.TopEnd).padding(16.dp),
             color = CameraOverlay,
             shape = RoundedCornerShape(12.dp),
         ) {
-            Column(Modifier.padding(10.dp)) {
-                Text("3D · ${sim.car.name}",color=Color.White)
-                Text(if(ready) "3D 화면 표시 중" else "3D 화면 준비 중",color=CameraSecondaryText)
-            }
+            Text("3D 화면 준비 중",Modifier.padding(10.dp),color=CameraSecondaryText)
         }
         RearCameraControl(
             reverse={ currentFrame();sceneOf(sim,currentReplay(),currentDirection(),currentBraking()).direction==Direction.REVERSE },

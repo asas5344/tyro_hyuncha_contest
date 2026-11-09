@@ -103,6 +103,7 @@ import com.team.hyuncha.sim.CoachPlan
 import com.team.hyuncha.sim.SimEvent
 import com.team.hyuncha.sim.ParkingScore
 import com.team.hyuncha.sim.Scoring
+import com.team.hyuncha.sim.CarPose
 import com.team.hyuncha.sim.SimStatus
 import java.util.Locale
 import kotlinx.coroutines.Dispatchers
@@ -207,6 +208,7 @@ fun ParkingScreen(
     // 게임 루프: 화면이 그려질 때마다(약 60fps) 시뮬레이터를 한 번씩 진행
     LaunchedEffect(sim) {
         var last = withFrameNanos { it }
+        var lastShown: ShownState? = null
         while (true) {
             withFrameNanos { now ->
                 // 프레임이 밀려도 한 번에 너무 멀리 가지 않도록 최대 50ms로 제한
@@ -232,7 +234,15 @@ fun ParkingScreen(
                         hornStartedAt.longValue = now
                     }
                 }
-                frame.longValue = now
+                // 화면 갱신(frame)은 보이는 값이 바뀌었거나 경적 강조 중일 때만 매번 하고, 그 밖에는 0.1초마다
+                // (목표 칸 깜빡임·하드 모드 남은 시간용). 차가 멈춰 있을 때 미니맵·탑뷰를 계속 다시 그리지 않아 CPU를 아낌
+                val shown = ShownState(sim.pose, sim.wheelAngleDeg, sim.status, currentInput.brakePressed,
+                    currentInput.direction, replaying, replayClock.doubleValue)
+                val flashing = hornStartedAt.longValue != 0L && now - hornStartedAt.longValue < hornDurationMs[0] * 1_000_000L
+                if (shown != lastShown || flashing || now - frame.longValue >= IDLE_FRAME_NS) {
+                    lastShown = shown
+                    frame.longValue = now
+                }
             }
         }
     }
@@ -352,7 +362,8 @@ fun ParkingScreen(
                     frame = { frame.longValue },
                     lock = lock,
                     waitingForBrake = input === vehicleInput && vehicleInput?.armed == false,
-                    vehicleStatus = if (input === vehicleInput) vehicleInput?.statusText() else null,
+                    viewLabel = if (firstPerson) "3D" else "탑뷰",
+                    brakeText = { if (input === vehicleInput) vehicleInput?.brakeText() ?: "확인 중" else if (input.brakePressed) "밟음" else "뗌" },
                     replaying = replaying,
                     plan = plan,
                     planDone = planDone,
@@ -446,6 +457,15 @@ fun ParkingScreen(
     }
 }
 
+/** 화면에 보이는 값 묶음. 이전 프레임과 같으면 다시 그리지 않음 */
+private data class ShownState(
+    val pose: CarPose, val wheelAngleDeg: Double, val status: SimStatus, val braking: Boolean,
+    val direction: Direction, val replaying: Boolean, val replayClock: Double,
+)
+
+/** 바뀐 게 없을 때 화면을 갱신하는 간격 (0.1초) */
+private const val IDLE_FRAME_NS = 100_000_000L
+
 /** 왼쪽 위 상태 표시 + 안내·결과 카드. frame을 읽어서 이 부분만 매 프레임 갱신됨 */
 @Composable
 private fun SimHud(
@@ -453,7 +473,8 @@ private fun SimHud(
     frame: () -> Long,
     lock: LockState,
     waitingForBrake: Boolean,
-    vehicleStatus: String?,
+    viewLabel: String,
+    brakeText: () -> String,
     replaying: Boolean,
     plan: CoachPlan?,
     planDone: Boolean,
@@ -498,12 +519,11 @@ private fun SimHud(
             modifier = Modifier.align(Alignment.TopStart),
         ) {
             Column(Modifier.padding(12.dp)) {
-                HudText("${sim.map.mode.label}${if (sim.map.rules.isHard) " (하드)" else ""} · ${sim.car.name}", bold = true)
-                vehicleStatus?.let { HudText(it) }
-                HudText("속도 ${fmt(kotlin.math.abs(sim.speed) * 3.6)} km/h")
+                HudText("$viewLabel · ${sim.car.name}", bold = true)
+                HudText("브레이크 ${brakeText()}")
                 HudText("바퀴 각도 ${fmt(sim.wheelAngleDeg)}°")
-                HudText("전후진 전환 ${sim.directionChanges}회")
-                HudText("칸 안: ${if (sim.isInsideSlot) "O" else "X"} · 각도 오차 ${fmt(sim.angleErrorDeg)}°")
+                // 핸들 각도 = 바퀴 각도 × 조향비 (오른쪽이 +)
+                HudText("핸들 각도 ${fmt(sim.wheelAngleDeg * sim.car.steeringRatio)}°")
             }
         }
 
@@ -655,22 +675,11 @@ private fun DirectionBar(
     }
 }
 
-/** HUD에 한 줄로 보여줄 기어·브레이크 상태 */
-private fun VehicleInput.statusText(): String {
-    val gearText = when (gear) {
-        null -> "확인 중"
-        VehicleGear.GEAR_PARK -> "P"
-        VehicleGear.GEAR_REVERSE -> "R"
-        VehicleGear.GEAR_NEUTRAL -> "N"
-        VehicleGear.GEAR_DRIVE -> "D"
-        else -> gear.toString()
-    }
-    val brakeText = when (pedalPressed) {
-        null -> "확인 중"
-        true -> "밟음"
-        false -> "뗌"
-    }
-    return "기어 $gearText · 브레이크 $brakeText"
+/** HUD에 보여줄 실제 브레이크 페달 상태 */
+private fun VehicleInput.brakeText(): String = when (pedalPressed) {
+    null -> "확인 중"
+    true -> "밟음"
+    false -> "뗌"
 }
 
 @Composable

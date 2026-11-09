@@ -37,7 +37,12 @@ internal class CameraFeed(
         isPostProcessingEnabled=true
         antiAliasing=View.AntiAliasing.FXAA
         isFrontFaceWindingInverted=kind!=FeedKind.SURROUND
-        setVisibleLayers(0xff,if(kind==FeedKind.ROOM_MIRROR) 1 else 1 or 4)
+        // 서라운드 뷰는 위에서 내려다보므로 천장을 빼고, 룸미러는 내 차(실내·차체)를 빼고 그림
+        setVisibleLayers(0xff,when(kind) {
+            FeedKind.ROOM_MIRROR -> 1 or ParkingMesh.CEILING_LAYER
+            FeedKind.SURROUND -> 1 or 4 or ParkingMesh.OWN_CAR_LAYER
+            else -> 1 or 4 or ParkingMesh.CEILING_LAYER or ParkingMesh.OWN_CAR_LAYER
+        })
     }
     private val panel=TexturedPanel(engine,scene,material,color,center,screenWidth,screenHeight,
         kind!=FeedKind.REAR && kind!=FeedKind.SURROUND,renderTarget=true,

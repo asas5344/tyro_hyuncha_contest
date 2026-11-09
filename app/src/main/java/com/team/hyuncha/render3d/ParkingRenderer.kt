@@ -37,6 +37,19 @@ internal class ParkingRenderer(private val context: Context, private val map: Pa
         isPostProcessingEnabled = true
         antiAliasing = View.AntiAliasing.FXAA
     }
+    // 후진할 때 미니맵 자리에 띄우는 작은 후방 카메라 화면 (차량 모니터는 운전석 시점에서 화면 밖으로 잘려서).
+    // 실제 후방 카메라처럼 좌우 반전. 서라운드 뷰는 화면 쪽(DriverMinimap)이 2D 탑뷰로 그림
+    private val pipCameraEntity = EntityManager.get().create()
+    private val pipCamera = engine.createCamera(pipCameraEntity).apply { setExposure(16f,1f/125f,100f);setScaling(-1.0,1.0) }
+    private val pipView = engine.createView().apply {
+        scene = this@ParkingRenderer.scene
+        camera = this@ParkingRenderer.pipCamera
+        isPostProcessingEnabled = true
+        antiAliasing = View.AntiAliasing.FXAA
+        isFrontFaceWindingInverted = true
+        setVisibleLayers(0xff,1 or 4 or 8 or ParkingMesh.CEILING_LAYER or ParkingMesh.OWN_CAR_LAYER)
+    }
+    private var pipActive = false
     private val sky = Skybox.Builder().color(.055f,.065f,.085f,1f).build(engine)
     private val indirect = IndirectLight.Builder().irradiance(1,floatArrayOf(.7f,.75f,.85f)).intensity(30_000f).build(engine)
     private val light = EntityManager.get().create()
@@ -90,6 +103,7 @@ internal class ParkingRenderer(private val context: Context, private val map: Pa
         scene.addEntity(light)
         camera.setExposure(16f,1f/125f,100f)
         load(ParkingMesh.garage(map))
+        load(ParkingMesh.ceiling(map),ParkingMesh.CEILING_LAYER)
         val bytes=context.assets.open("models/grandeur.glb").use { it.readBytes() }
         val buffer=ByteBuffer.allocateDirect(bytes.size).order(ByteOrder.nativeOrder()).apply { put(bytes); flip() }
         val instances=arrayOfNulls<FilamentInstance>(map.parkedCars.size.coerceAtLeast(1))
@@ -132,7 +146,9 @@ internal class ParkingRenderer(private val context: Context, private val map: Pa
         val ownVisible=own.entities.filter { e ->
             val name=ownAsset.getName(e) ?: ""
             val glass=name=="windshield" || name=="rear_window" || name.startsWith("side_glass")
-            if(glass) engine.renderableManager.setLayerMask(engine.renderableManager.getInstance(e),0xff,4)
+            val ri=engine.renderableManager.getInstance(e)
+            if(glass) engine.renderableManager.setLayerMask(ri,0xff,4)
+            else if(ri!=0) engine.renderableManager.setLayerMask(ri,0xff,ParkingMesh.OWN_CAR_LAYER)
             !name.startsWith("mirror_surface") && !isLegacyInterior(name)
         }.toIntArray()
         addEntities(ownVisible)
@@ -163,6 +179,10 @@ internal class ParkingRenderer(private val context: Context, private val map: Pa
         android.opengl.Matrix.translateM(mount,0,visual.eyeForwardM.toFloat(),visual.eyeHeightM.toFloat(),0f)
         tm.setTransform(cockpitRoot,mount)
         addEntities(cockpit.entities)
+        cockpit.entities.forEach { e ->
+            val ri=engine.renderableManager.getInstance(e)
+            if(ri!=0) engine.renderableManager.setLayerMask(ri,0xff,ParkingMesh.OWN_CAR_LAYER)
+        }
         for(entity in cockpit.entities) {
             val name=cockpit.getName(entity) ?: continue
             if(name=="steering_wheel") {
@@ -216,7 +236,7 @@ internal class ParkingRenderer(private val context: Context, private val map: Pa
             feeds+=CameraFeed(engine,scene,checkNotNull(feedMaterial),kind,384,216,Point3(visual.monitorForwardM,visual.monitorHeightM,.18),.25,.13)
         }
         sceneEntities.addAll(feeds.map { it.entity })
-        view.setVisibleLayers(0xff,1 or 2 or 8)
+        view.setVisibleLayers(0xff,1 or 2 or 8 or ParkingMesh.CEILING_LAYER or ParkingMesh.OWN_CAR_LAYER)
         ui.renderCallback=object : UiHelper.RendererCallback {
             override fun onNativeWindowChanged(surface: Surface) {
                 Log.d("Parking3D","surface ready")
@@ -240,9 +260,14 @@ internal class ParkingRenderer(private val context: Context, private val map: Pa
         val buffer=ByteBuffer.allocateDirect(bytes.size).order(ByteOrder.nativeOrder()).apply { put(bytes);flip() }
         return Material.Builder().payload(buffer,buffer.remaining()).build(engine)
     }
-    private fun load(buffer: ByteBuffer) {
+    /** @param layer 0이 아니면 이 층에만 보이게 함 (천장처럼 일부 카메라에서 빼야 하는 것) */
+    private fun load(buffer: ByteBuffer,layer: Int=0) {
         val asset=checkNotNull(loader.createAsset(buffer)) { "주차장 GLB 로딩 실패" }
         assets+=asset; resources.loadResources(asset); addEntities(asset.entities); asset.releaseSourceData()
+        if(layer!=0) asset.entities.forEach { e ->
+            val ri=engine.renderableManager.getInstance(e)
+            if(ri!=0) engine.renderableManager.setLayerMask(ri,0xff,layer)
+        }
     }
     fun attach(texture: TextureView) {
         texture.addOnLayoutChangeListener { _,left,top,right,bottom,_,_,_,_ ->
@@ -294,7 +319,9 @@ internal class ParkingRenderer(private val context: Context, private val map: Pa
                     feeds.filter { it.enabled && (it.needsUpdate || !it.hasRendered) }.forEach { renderer.render(it.view);it.hasRendered=true }
                     lastFeedFrame=now
                 }
-                renderer.render(view);renderer.endFrame();hasSubmittedFrame=true;frames++;dirty=false
+                renderer.render(view)
+                if(pipActive) renderer.render(pipView)
+                renderer.endFrame();hasSubmittedFrame=true;frames++;dirty=false
                 if(statsStart==0L) statsStart=now
                 if(now-statsStart>=5_000_000_000L) {
                     Log.d("Parking3D","rendered fps=%.1f".format(frames*1e9/(now-statsStart)))
@@ -359,7 +386,7 @@ internal class ParkingRenderer(private val context: Context, private val map: Pa
                 camera.setScaling(-1.0,1.0)
             }
             view.isFrontFaceWindingInverted=kind!=FeedKind.SURROUND
-            view.setVisibleLayers(0xff,1 or 4 or 8)
+            view.setVisibleLayers(0xff,if(kind==FeedKind.SURROUND) 1 or 4 or 8 or ParkingMesh.OWN_CAR_LAYER else 1 or 4 or 8 or ParkingMesh.CEILING_LAYER or ParkingMesh.OWN_CAR_LAYER)
         } else {
             val head=CameraRig.driverHead(car,s.look)
             val blend=1-exp(-dt/.14)
@@ -369,8 +396,22 @@ internal class ParkingRenderer(private val context: Context, private val map: Pa
             camera.setProjection(fov,view.viewport.width.toDouble()/view.viewport.height.coerceAtLeast(1),.035,100.0,Camera.Fov.VERTICAL)
             camera.setScaling(1.0,1.0)
             view.isFrontFaceWindingInverted=false
-            view.setVisibleLayers(0xff,1 or 2 or 8)
+            view.setVisibleLayers(0xff,1 or 2 or 8 or ParkingMesh.CEILING_LAYER or ParkingMesh.OWN_CAR_LAYER)
         }
+        updatePip(s)
+    }
+    /** 미니맵 자리의 후방 카메라 화면 (후진 중, 내 차 카메라가 후방 카메라일 때만) */
+    private fun updatePip(s: RenderState) {
+        val rect=s.pip
+        pipActive=rect!=null && s.direction==Direction.REVERSE && !s.focusRear && s.carCamera==CarCamera.REAR_ONLY
+        if(!pipActive || rect==null) return
+        val full=view.viewport
+        val w=(full.width*rect.width).toInt().coerceAtLeast(1)
+        val h=(full.height*rect.height).toInt().coerceAtLeast(1)
+        // Filament 화면 좌표는 아래쪽이 0
+        pipView.viewport=Viewport((full.width*rect.left).toInt(),(full.height*(1-rect.top-rect.height)).toInt(),w,h)
+        applyAim(pipCamera,CameraRig.feed(car,s.pose,FeedKind.REAR))
+        pipCamera.setProjection(72.0,w.toDouble()/h,.04,100.0,Camera.Fov.VERTICAL)
     }
     private fun applyAim(camera: Camera,aim: CameraAim) = camera.lookAt(aim.eye.x,aim.eye.y,aim.eye.z,aim.target.x,aim.target.y,aim.target.z,aim.up.x,aim.up.y,aim.up.z)
     override fun close() {
@@ -389,6 +430,7 @@ internal class ParkingRenderer(private val context: Context, private val map: Pa
         scene.indirectLight=null;scene.skybox=null
         engine.destroyIndirectLight(indirect);engine.destroySkybox(sky)
         engine.destroyEntity(light);EntityManager.get().destroy(light)
+        engine.destroyView(pipView);engine.destroyCameraComponent(pipCameraEntity);EntityManager.get().destroy(pipCameraEntity)
         engine.destroyView(view);engine.destroyCameraComponent(cameraEntity);EntityManager.get().destroy(cameraEntity)
         engine.destroyScene(scene);engine.destroyRenderer(renderer);engine.destroy()
     }
@@ -398,4 +440,7 @@ internal data class RenderState(
     val direction: Direction=Direction.FORWARD,val carCamera: CarCamera=CarCamera.REAR_ONLY,
     val showGuides: Boolean=true,val focusRear: Boolean=false,
     val speedMps: Double=0.0,val braking: Boolean=true,
+    val pip: PipRect?=null,
 )
+/** 화면 안의 작은 카메라 화면 위치. 3D 화면 크기에 대한 비율 (위·왼쪽 기준) */
+internal data class PipRect(val left: Float,val top: Float,val width: Float,val height: Float)
