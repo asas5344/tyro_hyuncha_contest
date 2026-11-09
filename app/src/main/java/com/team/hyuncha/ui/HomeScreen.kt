@@ -67,7 +67,13 @@ fun HomeScreen(
             }
             BoxWithConstraints(Modifier.weight(1f).fillMaxHeight().testTag("home_content")) {
                 val compactHeader = maxWidth < 850.dp
-                val diameter = minOf(controlHeight(if (maxHeight < 850.dp) 212.dp else 276.dp), 276.dp)
+                // 넓고 여유 있는 홈에서만 버튼을 더 키워 큰 글자에서 하단 조작이 잘리지 않게 한다.
+                val buttonGrowth = if (compactHeader) 0f else
+                    ((maxHeight - 1100.dp) / 110.dp).coerceIn(0f, 1f) *
+                        ((1.4f - scale) / 0.4f).coerceIn(0f, 1f)
+                val maxDiameter = 276.dp + 40.dp * buttonGrowth
+                val diameter = minOf(controlHeight(if (maxHeight < 850.dp) 212.dp else maxDiameter), maxDiameter)
+                val parkingButtonHeight = controlHeight(104.dp + 32.dp * buttonGrowth)
                 val contentPadding = 24.dp
                 val headerAreaHeight = ((maxHeight - diameter) / 2 - contentPadding).coerceAtLeast(0.dp)
                 Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())
@@ -113,15 +119,15 @@ fun HomeScreen(
                     // T자(직각)·평행·사선 주차 모두 선택 가능하다.
                     val perpendicular: @Composable (Modifier) -> Unit = { m ->
                         ParkingChoice(ParkingMode.PERPENDICULAR.label, mode == ParkingMode.PERPENDICULAR, true,
-                            { onModeChange(ParkingMode.PERPENDICULAR) }, m.testTag("mode_PERPENDICULAR"))
+                            { onModeChange(ParkingMode.PERPENDICULAR) }, m.heightIn(min = parkingButtonHeight).testTag("mode_PERPENDICULAR"))
                     }
                     val parallel: @Composable (Modifier) -> Unit = { m ->
                         ParkingChoice(ParkingMode.PARALLEL.label, mode == ParkingMode.PARALLEL, true,
-                            { onModeChange(ParkingMode.PARALLEL) }, m.testTag("mode_PARALLEL"))
+                            { onModeChange(ParkingMode.PARALLEL) }, m.heightIn(min = parkingButtonHeight).testTag("mode_PARALLEL"))
                     }
                     val diagonal: @Composable (Modifier) -> Unit = { m ->
                         ParkingChoice(ParkingMode.DIAGONAL.label, mode == ParkingMode.DIAGONAL, true,
-                            { onModeChange(ParkingMode.DIAGONAL) }, m.testTag("mode_DIAGONAL"))
+                            { onModeChange(ParkingMode.DIAGONAL) }, m.heightIn(min = parkingButtonHeight).testTag("mode_DIAGONAL"))
                     }
                     if (!compactHeader) {
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -137,11 +143,11 @@ fun HomeScreen(
                         diagonal(Modifier.fillMaxWidth())
                     }
                     Spacer(Modifier.height(8.dp))
-                    HardModeChoice(hardMode, onHardModeChange, hardSituation, onHardSituationChange, darkTheme)
+                    HardModeChoice(hardMode, onHardModeChange, hardSituation, onHardSituationChange, darkTheme, buttonGrowth)
                     if (!hardMode) {
                         // 접혀도 펼쳐질 높이를 카드 아래에 남겨 주차 방식과 카드 상단을 고정한다.
                         Layout(
-                            content = { HardSituationPicker(hardSituation, onHardSituationChange) },
+                            content = { HardSituationPicker(hardSituation, onHardSituationChange, buttonGrowth) },
                             modifier = Modifier.fillMaxWidth().padding(horizontal = HardModeHorizontalPadding),
                         ) { measurables, constraints ->
                             val picker = measurables.single().measure(constraints)
@@ -164,14 +170,14 @@ private val HardModeHorizontalPadding = 24.dp
 private fun HardModeChoice(
     on: Boolean, onChange: (Boolean) -> Unit,
     situation: HardSituation?, onSituationChange: (HardSituation?) -> Unit,
-    darkTheme: Boolean,
+    darkTheme: Boolean, buttonGrowth: Float,
 ) {
     val c = MaterialTheme.colorScheme
     Surface(modifier = Modifier.fillMaxWidth().testTag("hard_mode")
         .toggleable(value = on, role = Role.Switch, onValueChange = onChange),
         shape = RoundedCornerShape(18.dp), color = if (on) c.surfaceVariant else c.surface) {
         Column(Modifier.padding(horizontal = HardModeHorizontalPadding, vertical = 12.dp)) {
-            Row(Modifier.heightIn(min = 52.dp), verticalAlignment = Alignment.CenterVertically) {
+            Row(Modifier.heightIn(min = 52.dp + 10.dp * buttonGrowth), verticalAlignment = Alignment.CenterVertically) {
                 Text("하드 모드", Modifier.weight(1f), style = MaterialTheme.typography.titleMedium,
                     fontWeight = if (on) FontWeight.Bold else FontWeight.Normal, color = c.onSurface)
                 Text(if (on) "켜짐 · T자 주차" else "꺼짐", color = c.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
@@ -179,8 +185,8 @@ private fun HardModeChoice(
                 Switch(
                     checked = on, onCheckedChange = null,
                     modifier = Modifier.testTag("hard_mode_switch").graphicsLayer {
-                        scaleX = 1.15f
-                        scaleY = 1.15f
+                        scaleX = 1.15f + 0.1f * buttonGrowth
+                        scaleY = scaleX
                     },
                     colors = SwitchDefaults.colors(
                         checkedTrackColor = if (darkTheme) Color(0xFF00E074) else Color(0xFF02C265),
@@ -193,7 +199,7 @@ private fun HardModeChoice(
             }
             Text("T자 주차 · 40초 · 8km/h · 클락션 3번 · 좁은 칸 · 랜덤 상황",
                 Modifier.padding(top = 6.dp), color = c.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
-            if (on) HardSituationPicker(situation, onSituationChange)
+            if (on) HardSituationPicker(situation, onSituationChange, buttonGrowth)
         }
     }
 }
@@ -201,7 +207,7 @@ private fun HardModeChoice(
 /** 확인용: 하드 모드 상황 직접 고르기 (나중에 뺄 예정) */
 @Composable
 @OptIn(ExperimentalLayoutApi::class)
-private fun HardSituationPicker(situation: HardSituation?, onChange: (HardSituation?) -> Unit) {
+private fun HardSituationPicker(situation: HardSituation?, onChange: (HardSituation?) -> Unit, buttonGrowth: Float) {
     Column(Modifier.padding(top = 8.dp)) {
         Text("상황 고르기 (확인용)", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
         FlowRow(Modifier.padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -210,7 +216,9 @@ private fun HardSituationPicker(situation: HardSituation?, onChange: (HardSituat
                     selected = situation == s,
                     onClick = { onChange(s) },
                     label = { Text(s?.label ?: "랜덤") },
-                    modifier = Modifier.heightIn(min = 48.dp).testTag("hard_pick_${s?.name ?: "RANDOM"}"),
+                    modifier = Modifier.heightIn(min = 48.dp + 10.dp * buttonGrowth)
+                        .widthIn(min = 116.dp * buttonGrowth)
+                        .testTag("hard_pick_${s?.name ?: "RANDOM"}"),
                 )
             }
         }
@@ -260,7 +268,7 @@ private fun EngineStartButton(onStart: () -> Unit, modifier: Modifier) {
 @Composable
 private fun ParkingChoice(title: String, selected: Boolean, enabled: Boolean, onClick: () -> Unit, modifier: Modifier) {
     val c = MaterialTheme.colorScheme
-    Surface(onClick = onClick, enabled = enabled, modifier = modifier.heightIn(min = controlHeight(104.dp)),
+    Surface(onClick = onClick, enabled = enabled, modifier = modifier,
         shape = RoundedCornerShape(18.dp),
         color = if (selected) c.surfaceVariant else c.surface,
         contentColor = if (selected) c.onSurface else c.onSurfaceVariant,
