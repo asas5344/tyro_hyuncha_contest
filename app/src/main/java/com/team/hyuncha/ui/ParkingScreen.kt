@@ -197,10 +197,12 @@ fun ParkingScreen(
     }
 
     // 새 판 또는 화면 이탈 시 재생 중인 클락션도 정리한다.
-    val horn = remember(sim) { if (sim.map.rules.isHard) HornPlayer() else null }
+    val context = LocalContext.current
+    val horn = remember(sim) { if (sim.map.rules.isHard) HornPlayer(context) else null }
     DisposableEffect(horn) { onDispose { horn?.release() } }
     val hornNext = remember(sim) { intArrayOf(0) }
     val hornStartedAt = remember(sim) { mutableLongStateOf(0L) }
+    val hornDurationMs = remember(sim) { intArrayOf(0) }   // 방금 울린 경적 파일의 길이
 
     // 게임 루프: 화면이 그려질 때마다(약 60fps) 시뮬레이터를 한 번씩 진행
     LaunchedEffect(sim) {
@@ -225,8 +227,8 @@ fun ParkingScreen(
                     if (sim.status == SimStatus.DRIVING && sim.startedAtSec != null &&
                         hornNext[0] < horns.size && sim.clockSec >= horns[hornNext[0]]
                     ) {
+                        hornDurationMs[0] = horn?.honk(hornNext[0]) ?: 0
                         hornNext[0]++
-                        horn?.honk()
                         hornStartedAt.longValue = now
                     }
                 }
@@ -250,7 +252,6 @@ fun ParkingScreen(
     }
 
     // 음성 명령 (Pleos SpeechToText). 화면을 떠나면 해제
-    val context = LocalContext.current
     val voice = remember { VoiceInput(context) }
     var voiceMessage by remember { mutableStateOf<String?>(null) }   // 알아들은 결과를 잠깐 보여줌
     val onVoice by rememberUpdatedState { cmd: VoiceCommand?, said: String ->
@@ -440,7 +441,7 @@ fun ParkingScreen(
             }
         }
         if (sim.map.rules.isHard && !replaying) {
-            HornFlashIfOn({ frame.longValue }, hornStartedAt.longValue, Modifier.matchParentSize())
+            HornFlashIfOn({ frame.longValue }, hornStartedAt.longValue, hornDurationMs[0], Modifier.matchParentSize())
         }
     }
 }
@@ -551,11 +552,11 @@ private fun SimHud(
 }
 
 @Composable
-private fun HornFlashIfOn(frame: () -> Long, startedAt: Long, modifier: Modifier) {
+private fun HornFlashIfOn(frame: () -> Long, startedAt: Long, durationMs: Int, modifier: Modifier) {
     if (startedAt == 0L) return
     val elapsedMs = (frame() - startedAt) / 1_000_000f
-    if (elapsedMs < HORN_DURATION_MS) {
-        val strength = ((HORN_DURATION_MS - elapsedMs) / 650f).coerceIn(0f, 1f)
+    if (elapsedMs < durationMs) {
+        val strength = ((durationMs - elapsedMs) / 650f).coerceIn(0f, 1f)
         HornFlash(strength, modifier)
     }
 }
