@@ -10,6 +10,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.activity.ComponentActivity
@@ -39,7 +41,7 @@ class Parking3DTest {
         compose.setContent {
             if(visible) RealisticParkingView(sim,{frame},{input.direction},{input.brakePressed},Modifier.fillMaxSize())
         }
-        fun ready() { compose.waitUntil(30_000) { compose.onAllNodesWithText("3D 화면 표시 중").fetchSemanticsNodes().isNotEmpty() } }
+        fun ready() { compose.waitUntil(30_000) { compose.onAllNodesWithTag("parking3d_ready").fetchSemanticsNodes().isNotEmpty() } }
         ready();capture("3d-front")
         compose.runOnIdle {
             input.brakePressed=false
@@ -63,7 +65,7 @@ class Parking3DTest {
             compose.runOnIdle { visible=true };ready()
         }
         capture("3d-reentered")
-        compose.onNodeWithText("3D 화면 표시 중").assertExists()
+        compose.onNodeWithTag("parking3d_ready").assertExists()
     }
     private fun imageSignature(): List<Int> = compose.runOnIdle {
         val texture=compose.activity.window.decorView.findViewWithTag<TextureView>("parking3d_surface")
@@ -96,7 +98,7 @@ class Parking3DTest {
         }
         for(car in CarPresets.all) for(mode in ParkingMode.entries) {
             compose.runOnIdle { selectedCar=car;selectedMode=mode;selectedCamera=CarCamera.REAR_ONLY;replay=null;LookButtons.select(LookSide.FRONT) }
-            compose.waitUntil(30_000) { compose.onAllNodesWithText("3D 화면 표시 중").fetchSemanticsNodes().isNotEmpty() }
+            compose.waitUntil(30_000) { compose.onAllNodesWithTag("parking3d_ready").fetchSemanticsNodes().isNotEmpty() }
             compose.waitUntil(15_000) { imageSignature().toSet().size>6 }
             val initial=imageSignature()
             compose.runOnIdle {

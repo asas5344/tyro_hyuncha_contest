@@ -2,6 +2,8 @@ package com.team.hyuncha.ui
 
 import android.graphics.Bitmap
 import androidx.activity.ComponentActivity
+import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.test.platform.app.InstrumentationRegistry
@@ -36,7 +38,7 @@ class DriverViewRegressionTest {
         compose.mainClock.advanceTimeBy(500)
         compose.onNodeWithTag("start_practice").performClick()
         compose.mainClock.advanceTimeBy(500)
-        compose.waitUntil(60_000) { compose.mainClock.advanceTimeBy(16);compose.onAllNodesWithText("3D 화면 표시 중").fetchSemanticsNodes().isNotEmpty() }
+        compose.waitUntil(60_000) { compose.mainClock.advanceTimeBy(16);compose.onAllNodesWithTag("parking3d_ready").fetchSemanticsNodes().isNotEmpty() }
         compose.waitForIdle();Thread.sleep(3000);capture("driver-layout-front")
         compose.onNodeWithTag("look_left").performClick()
         compose.mainClock.advanceTimeBy(1000)
@@ -59,7 +61,7 @@ class DriverViewRegressionTest {
                     Modifier.width(maxWidth*.74f).height(maxHeight*.90f))
             }
         }
-        compose.waitUntil(60_000) { compose.mainClock.advanceTimeBy(16);compose.onAllNodesWithText("3D 화면 표시 중").fetchSemanticsNodes().isNotEmpty() }
+        compose.waitUntil(60_000) { compose.mainClock.advanceTimeBy(16);compose.onAllNodesWithTag("parking3d_ready").fetchSemanticsNodes().isNotEmpty() }
         for((tag,name) in listOf("look_left" to "isolatedleft","look_right" to "isolatedright")) {
             compose.onNodeWithTag(tag).performClick();compose.mainClock.advanceTimeBy(1000)
             compose.waitForIdle();Thread.sleep(6000);capture("driver-layout-$name")

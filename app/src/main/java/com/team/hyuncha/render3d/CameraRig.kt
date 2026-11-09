@@ -13,6 +13,8 @@ internal enum class FeedKind { LEFT_MIRROR, RIGHT_MIRROR, ROOM_MIRROR, REAR, SUR
 internal object CameraRig {
     const val MIRROR_WIDTH_M=.25
     const val MIRROR_HEIGHT_M=MIRROR_WIDTH_M*9/16
+    /** 서라운드 뷰 카메라 높이(m). 천장(2.85m)보다 위라서 서라운드 뷰는 천장 층(ParkingMesh.CEILING_LAYER)을 안 그림 */
+    const val SURROUND_EYE_M=10.0
     fun mirrorYaw(car: CarSpec,side: Int): Double {
         val p=mirrorPoint(car,side);val eye=SceneCoordinates.eye(car,CarPose(0.0,0.0,0.0))
         return atan2(p.z-eye.z,p.x-eye.x)
@@ -65,7 +67,7 @@ internal object CameraRig {
         FeedKind.REAR -> aim(SceneCoordinates.local(pose,-car.rearOverhangM-.06,0.0,VehicleVisuals.forCar(car).rearCameraHeightM),pose.heading+PI,34.0)
         FeedKind.SURROUND -> {
             val target=SceneCoordinates.local(pose,car.lengthM/2-car.rearOverhangM,0.0,0.0)
-            CameraAim(target.copy(y=10.0),target,Point3(cos(pose.heading),0.0,sin(pose.heading)))
+            CameraAim(target.copy(y=SURROUND_EYE_M),target,Point3(cos(pose.heading),0.0,sin(pose.heading)))
         }
     }
 }

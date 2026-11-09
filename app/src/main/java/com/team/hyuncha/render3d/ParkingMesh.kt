@@ -88,6 +88,13 @@ internal class ParkingMesh {
                 box(it,0.0,.2,4)
                 box(it,1.1,1.22,4)
             }
+        }.build()
+
+        /** 서라운드 뷰처럼 위에서 내려다보는 카메라에서는 빼야 해서 천장·조명은 따로 만듦 (CEILING_LAYER에만 보임) */
+        const val CEILING_LAYER = 16
+        /** 내 차 차체·실내. 룸미러는 이 층을 빼고 그려서 차 안 대신 뒷유리 너머 바깥이 비치게 함 */
+        const val OWN_CAR_LAYER = 32
+        fun ceiling(map: ParkingMap): ByteBuffer = ParkingMesh().apply {
             // Overhead fixtures add scale without introducing non-collidable pillars.
             flat(OrientedRect(Vec2(map.widthM/2,map.heightM/2),map.widthM/2,map.heightM/2,0.0),2.85,0)
             for (x in 2 until map.widthM.toInt() step 4) {
