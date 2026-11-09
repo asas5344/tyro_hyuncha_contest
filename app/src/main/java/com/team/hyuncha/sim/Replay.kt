@@ -25,7 +25,7 @@ enum class CarPart(val subject: String) {
 }
 
 /** 무엇에 닿았는지 */
-enum class ObstacleKind(val label: String) { WALL("벽"), PARKED_CAR("주차된 차") }
+enum class ObstacleKind(val label: String) { WALL("벽"), PARKED_CAR("주차된 차"), PILLAR("기둥") }
 
 /** 연습 중 생긴 일 (재생할 때 지도 위에 표시) */
 sealed interface SimEvent {

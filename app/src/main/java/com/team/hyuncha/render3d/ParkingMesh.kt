@@ -82,6 +82,12 @@ internal class ParkingMesh {
                 box(it,0.0,.2,4)
                 box(it,1.1,1.22,4)
             }
+            // 하드 모드 "기둥 옆 자리"의 기둥 (부딪히면 실패). 벽과 같은 콘크리트 + 띠
+            map.pillars.forEach {
+                box(it,0.0,2.8,3)
+                box(it,0.0,.2,4)
+                box(it,1.1,1.22,4)
+            }
             // Overhead fixtures add scale without introducing non-collidable pillars.
             flat(OrientedRect(Vec2(map.widthM/2,map.heightM/2),map.widthM/2,map.heightM/2,0.0),2.85,0)
             for (x in 2 until map.widthM.toInt() step 4) {

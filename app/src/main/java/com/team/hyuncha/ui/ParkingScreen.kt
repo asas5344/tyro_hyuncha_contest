@@ -90,6 +90,7 @@ import androidx.compose.ui.platform.LocalContext
 import kotlinx.coroutines.delay
 import com.team.hyuncha.safety.LockState
 import com.team.hyuncha.safety.SafetyLock
+import com.team.hyuncha.sim.HardSituation
 import com.team.hyuncha.sim.ParkingMaps
 import com.team.hyuncha.sim.ParkingMode
 import com.team.hyuncha.sim.ParkingSimulator
@@ -126,6 +127,8 @@ fun ParkingScreen(
     carCamera: CarCamera = CarCamera.REAR_ONLY,
     driverName: String = "나",
     records: ScoreRecords? = null,
+    hardMode: Boolean = false,
+    hardSituation: HardSituation? = null,
 ) {
     val car = initialCar
     val currentCar by rememberUpdatedState(car)
@@ -145,7 +148,9 @@ fun ParkingScreen(
 
     // 다시 할 때마다 round가 바뀌어 목표 칸·주차된 차가 새로 배치됨
     var round by remember { mutableIntStateOf(0) }
-    val sim = remember(car, round, parkingMode) { ParkingSimulator(car, ParkingMaps.random(parkingMode)) }
+    val sim = remember(car, round, parkingMode, hardMode, hardSituation) {
+        ParkingSimulator(car, if (hardMode) ParkingMaps.randomHard(situation = hardSituation) else ParkingMaps.random(parkingMode))
+    }
     val frame = remember { mutableLongStateOf(0L) }
     val focus = remember { FocusRequester() }
 
@@ -181,6 +186,12 @@ fun ParkingScreen(
         onDispose { if (mode == InputMode.VEHICLE) vehicleInput?.stop() }
     }
 
+    // 하드 모드 클락션: 처음 움직인 뒤 정해진 시각(4초 + 랜덤 2번)에 크게 울리고 화면에 "빵빵!"을 1초
+    val horn = remember { HornPlayer() }
+    DisposableEffect(horn) { onDispose { horn.release() } }
+    val hornNext = remember(sim) { intArrayOf(0) }
+    val hornFlashUntil = remember(sim) { mutableDoubleStateOf(-1.0) }
+
     // 게임 루프: 화면이 그려질 때마다(약 60fps) 시뮬레이터를 한 번씩 진행
     LaunchedEffect(sim) {
         var last = withFrameNanos { it }
@@ -200,6 +211,14 @@ fun ParkingScreen(
                 } else if (currentLock == LockState.OK) {
                     // 안전 잠금이 풀려 있으면 시뮬레이터를 멈춤
                     sim.step(currentInput, dt)
+                    val horns = sim.map.rules.hornTimesSec
+                    if (sim.status == SimStatus.DRIVING && sim.startedAtSec != null &&
+                        hornNext[0] < horns.size && sim.clockSec >= horns[hornNext[0]]
+                    ) {
+                        hornNext[0]++
+                        horn.honk()
+                        hornFlashUntil.doubleValue = sim.clockSec + 1.0
+                    }
                 }
                 frame.longValue++
             }
@@ -373,6 +392,11 @@ fun ParkingScreen(
                         VoiceButton(voice, Modifier.height(64.dp))
                     }
                 }
+                // 하드 모드: 남은 시간·상황, 클락션
+                if (sim.map.rules.isHard && !replaying) {
+                    HardModeBar(sim, { frame.longValue }, Modifier.align(Alignment.TopCenter).padding(top = 12.dp))
+                    HornFlashIfOn(sim, { frame.longValue }, hornFlashUntil.doubleValue, Modifier.align(Alignment.Center))
+                }
                 // 음성 명령: 듣는 중이면 들린 말, 끝나면 결과를 위쪽 가운데에 잠깐 보여줌
                 VoiceBubble(voice, voiceMessage, Modifier.align(Alignment.TopCenter).padding(top = 72.dp))
                 // 실제 차량 모드: 메뉴 대신 전진/후진과 다시 하기만 작게 띄움 (기어는 P 고정이라 방향은 앱에서 고름)
@@ -436,14 +460,15 @@ private fun SimHud(
     }
     // 랭킹: 성공한 판마다 한 번만 저장 (모범 주행 계산이 끝나 점수가 확정된 뒤)
     var rank by remember(sim) { mutableStateOf<RankResult?>(null) }
-    val ready = score != null && planDone && records != null
+    // 하드 모드는 랭킹에 넣지 않음 (나중에 랭킹 모드를 따로 만들 예정)
+    val ready = score != null && planDone && records != null && !sim.map.rules.isHard
     LaunchedEffect(sim, ready) {
         if (ready && rank == null) {
             rank = records!!.add(ScoreRecord(Ranking.cleanName(driverName), sim.map.mode, sim.car.name, score!!.total, score.grade, System.currentTimeMillis()))
         }
     }
     val rankText = when {
-        records == null || score == null -> null
+        records == null || score == null || sim.map.rules.isHard -> null
         rank == null -> "랭킹 계산 중…"
         rank!!.total == 1 -> "${sim.map.mode.label} 첫 기록! (${Ranking.cleanName(driverName)})"
         rank!!.isBest -> "${sim.map.mode.label} 신기록! 1위 / ${rank!!.total}개 기록"
@@ -458,7 +483,7 @@ private fun SimHud(
             modifier = Modifier.align(Alignment.TopStart),
         ) {
             Column(Modifier.padding(12.dp)) {
-                HudText("${sim.map.mode.label} · ${sim.car.name}", bold = true)
+                HudText("${sim.map.mode.label}${if (sim.map.rules.isHard) " (하드)" else ""} · ${sim.car.name}", bold = true)
                 vehicleStatus?.let { HudText(it) }
                 HudText("속도 ${fmt(kotlin.math.abs(sim.speed) * 3.6)} km/h")
                 HudText("바퀴 각도 ${fmt(sim.wheelAngleDeg)}°")
@@ -469,6 +494,16 @@ private fun SimHud(
 
         when {
             lock.message != null -> NoticeCard(lock.message, Modifier.align(Alignment.Center))
+            sim.status == SimStatus.TIMEOUT -> ResultCard(
+                title = "시간 초과",
+                lines = listOf("제한시간 ${sim.map.rules.timeLimitSec?.toInt() ?: 0}초가 지났어요"),
+                feedback = feedback,
+                modelReady = plan != null,
+                onRestart = onRestart,
+                onReplay = onReplay,
+                onShowModel = onShowModel,
+                modifier = Modifier.align(Alignment.Center),
+            )
             sim.status == SimStatus.COLLIDED -> ResultCard(
                 title = "부딪혔어요",
                 lines = listOfNotNull(sim.collision?.message),
@@ -499,6 +534,13 @@ private fun SimHud(
             )
         }
     }
+}
+
+/** 클락션이 울린 뒤 1초 동안 화면 가운데 "빵빵!" */
+@Composable
+private fun HornFlashIfOn(sim: ParkingSimulator, frame: () -> Long, until: Double, modifier: Modifier) {
+    frame()
+    if (sim.clockSec < until) HornFlash(modifier)
 }
 
 /** 음성 명령 버튼: 누르면 한 번 듣고, 듣는 중에 다시 누르면 그만 들음 */
