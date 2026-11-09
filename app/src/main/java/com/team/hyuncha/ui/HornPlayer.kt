@@ -9,6 +9,9 @@ import kotlin.math.cos
 import kotlin.math.min
 import kotlin.random.Random
 
+/** 길게 한 번 울리는 경적의 길이. 화면 가장자리 강조(ParkingScreen)도 이 시간만큼 보여 줌 */
+internal const val HORN_DURATION_MS = 850
+
 /** 하드 모드 경적. 참고 음원의 기본음과 배음을 합성해 차량의 미디어 음량으로 재생한다. */
 class HornPlayer {
     private val sampleRate = 44_100
@@ -16,7 +19,7 @@ class HornPlayer {
     private val doubleTrack: AudioTrack
 
     init {
-        val waveform = DoubleArray(sampleRate * 850 / 1_000)
+        val waveform = DoubleArray(sampleRate * HORN_DURATION_MS / 1_000)
         // 참고 음원의 짧은 경적에서 측정한 위상(rad)과 상대 진폭. 경적이 선명하게 들리도록 높은 배음을 강조했다.
         addHarmonics(waveform, 335.3, listOf(
             0.32 to 0.0, 1.00 to 1.48, 0.09 to -0.41, 0.90 to 1.89,

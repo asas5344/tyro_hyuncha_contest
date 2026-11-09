@@ -6,6 +6,8 @@ import androidx.compose.ui.graphics.asAndroidBitmap
 import java.io.File
 import java.io.FileOutputStream
 import androidx.compose.ui.test.*
+import androidx.compose.ui.unit.DpRect
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.height
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.test.platform.app.InstrumentationRegistry
@@ -42,6 +44,50 @@ class HyunchaNavigationTest {
         FileOutputStream(File(context.cacheDir, filename)).use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
     }
     private fun openApp() { compose.setContent { HyunchaApp(vehicle = null, preferences = store) }; settle() }
+
+    @Test fun hardModeExpandsDownwardBelowCenteredStart() {
+        verifyHardModeLayout(AppTextSize.STANDARD)
+    }
+
+    @Test fun hardModeExpandsDownwardWithExtraLargeText() {
+        verifyHardModeLayout(AppTextSize.EXTRA_LARGE)
+    }
+
+    private fun verifyHardModeLayout(textSize: AppTextSize) {
+        store.textSize = textSize
+        openApp()
+        val home = compose.onNodeWithTag("home_screen").getUnclippedBoundsInRoot()
+        val content = compose.onNodeWithTag("home_content").getUnclippedBoundsInRoot()
+        fun assertWithinHome(tag: String): DpRect {
+            val node = compose.onNodeWithTag(tag).assertIsDisplayed().getUnclippedBoundsInRoot()
+            assertTrue("$tag should fit on home: $node inside $home",
+                node.top >= home.top && node.bottom <= home.bottom &&
+                    node.left >= home.left && node.right <= home.right)
+            return node
+        }
+        val start = assertWithinHome("start_practice")
+        assertEquals(((content.left + content.right) / 2).value, ((start.left + start.right) / 2).value, 1f)
+        assertEquals(((content.top + content.bottom) / 2).value, ((start.top + start.bottom) / 2).value, 1f)
+        val modesBottom = ParkingMode.entries.maxOf { assertWithinHome("mode_${it.name}").bottom }
+        val collapsedCard = assertWithinHome("hard_mode")
+        assertEquals((modesBottom + 8.dp).value, collapsedCard.top.value, 1f)
+        val card = compose.onNodeWithTag("hard_mode").assertIsOff()
+        val switch = compose.onNodeWithTag("hard_mode_switch", useUnmergedTree = true).assertIsDisplayed()
+        switch.performTouchInput { click() }; settle()
+        card.assertIsOn()
+        val expandedCard = assertWithinHome("hard_mode")
+        assertEquals(collapsedCard.top, expandedCard.top)
+        assertTrue(expandedCard.bottom > collapsedCard.bottom)
+        assertEquals((home.bottom - 24.dp).value, expandedCard.bottom.value, 1f)
+        listOf("RANDOM", "PILLAR", "ENCROACH", "DOUBLE_PARKED").forEach { assertWithinHome("hard_pick_$it") }
+        assertEquals(start, assertWithinHome("start_practice"))
+        capture("home_screen", "home-hard-mode-${textSize.name}-on.png")
+        switch.performTouchInput { click() }; settle()
+        card.assertIsOff()
+        assertEquals(collapsedCard, assertWithinHome("hard_mode"))
+        assertEquals(start, assertWithinHome("start_practice"))
+        capture("home_screen", "home-hard-mode-${textSize.name}-off.png")
+    }
 
     @Test fun rankingShowsRecordsByModeInScoreOrder() {
         val recordsName = "driving_mate_ranking_instrumented_test"

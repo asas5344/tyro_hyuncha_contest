@@ -49,7 +49,10 @@ fun HyunchaApp(vehicle: Vehicle?, preferences: UiPreferences? = null, scoreRecor
         if (choosingCar) choosingCar = false else screen = "home"
     }
     CompositionLocalProvider(LocalAppTextScale provides textSize.multiplier) {
-        HyunchaTheme(darkTheme = dark, textScale = textSize.multiplier) {
+        HyunchaTheme(
+            darkTheme = dark, textScale = textSize.multiplier,
+            pleosVisuals = screen == "home" || screen == "parking",
+        ) {
             Scaffold(containerColor = MaterialTheme.colorScheme.background) { insets ->
                 Surface(Modifier.fillMaxSize().padding(insets), color = MaterialTheme.colorScheme.background,
                     contentColor = MaterialTheme.colorScheme.onBackground) {
@@ -82,6 +85,7 @@ fun HyunchaApp(vehicle: Vehicle?, preferences: UiPreferences? = null, scoreRecor
                             onHardModeChange = { on -> hardMode = on; if (on) parkingModeName = ParkingMode.PERPENDICULAR.name },
                             hardSituation = hardSituation,
                             onHardSituationChange = { hardSituationName = it?.name },
+                            darkTheme = dark,
                             onRanking = { screen = "ranking" })
                     }
                     if (choosingCar) CarSelectionSheet(selectedCar, onSelect = {
