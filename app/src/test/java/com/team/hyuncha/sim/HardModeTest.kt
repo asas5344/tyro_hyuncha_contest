@@ -43,6 +43,16 @@ class HardModeTest {
         assertEquals(HardSituation.entries.toSet(), seen)
     }
 
+    @Test fun 하드_모드_통로는_일반_모드보다_좁다() {
+        val normal = ParkingMaps.perpendicular()
+        val normalAisle = normal.slot.center.y - normal.slot.halfLength
+        for (situation in listOf(HardSituation.ENCROACH, HardSituation.DOUBLE_PARKED)) {
+            val hard = ParkingMaps.hard(4, situation, -1)
+            val hardAisle = hard.slot.center.y - hard.slot.halfLength
+            assertEquals(0.3, normalAisle - hardAisle, 1e-9)
+        }
+    }
+
     @Test fun 상황을_골라서_만들_수_있다() {
         HardSituation.entries.forEach { s -> assertEquals(s, ParkingMaps.randomHard(Random(1), s).rules.situation) }
     }

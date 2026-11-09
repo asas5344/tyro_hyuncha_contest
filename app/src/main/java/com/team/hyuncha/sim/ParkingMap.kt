@@ -77,11 +77,12 @@ object ParkingMaps {
         targetIndex: Int = 4,
         parkedIndices: List<Int> = listOf(0, 1, 3, 5, 6),
         slotWidth: Double = SLOT_W,
+        aisleWidth: Double = AISLE_W,
     ): ParkingMap {
         val SLOT_W = slotWidth          // 하드 모드는 칸이 더 좁음
         val slotCount = SLOT_COUNT
         val slotsLeft = 3.6
-        val slotTop = AISLE_W
+        val slotTop = aisleWidth
         val slotBottom = slotTop + SLOT_D
         val width = slotsLeft * 2 + SLOT_W * slotCount
         val height = slotBottom
@@ -118,7 +119,7 @@ object ParkingMaps {
             parkedCars = parkedCars,
             slot = slotRect(targetIndex),
             lines = lines,
-            start = CarPose(x = 5.5, y = AISLE_W / 2, heading = 0.0),
+            start = CarPose(x = 5.5, y = aisleWidth / 2, heading = 0.0),
             bays = (0 until slotCount).map(::slotRect),
         )
     }
@@ -136,7 +137,7 @@ object ParkingMaps {
     }
 
     // ───────── 하드 모드 (T자 주차만) ─────────
-    // 항상: 제한시간 40초, 속도 8km/h, 클락션 3번(4초 고정 + 랜덤 2번), 좁은 칸 2.3m
+    // 항상: 제한시간 40초, 속도 8km/h, 클락션 3번(4초 고정 + 랜덤 2번), 좁은 통로와 주차 칸
     // 판마다 랜덤 하나: 기둥 옆 자리 / 옆 차 침범 / 이중주차
 
     const val HARD_SPEED_MPS = 8.0 / 3.6
@@ -144,6 +145,7 @@ object ParkingMaps {
     // 일반 2.6m(확장형) → 2.5m(법정 일반형). 2026-11-09 측정: 2.3·2.4m는 기둥이 있으면 그랜저(5.04m)를
     // 표준 방법으로 넣을 수 없어서 2.5m. 옆 차 침범과 겹치면 실제로 쓸 수 있는 폭은 약 2.3m
     const val HARD_SLOT_W = 2.5
+    private const val HARD_AISLE_W = 5.7
     const val HORN_FIXED_SEC = 4.0
     const val HORN_COUNT = 3
     private const val HORN_RANDOM_FROM = 8.0
@@ -207,7 +209,9 @@ object ParkingMaps {
         doubleParkOffset: Double = -2.0,
     ): ParkingMap {
         val parked = (0 until SLOT_COUNT).filter { it != targetIndex }
-        val base = perpendicular(targetIndex, parked, slotWidth = HARD_SLOT_W)
+        // 통로에 돌출된 기둥이 있으면 그랜저가 돌 수 있도록 기존 폭을 확보한다.
+        val aisleWidth = if (situation == HardSituation.PILLAR) AISLE_W else HARD_AISLE_W
+        val base = perpendicular(targetIndex, parked, slotWidth = HARD_SLOT_W, aisleWidth = aisleWidth)
         val slot = base.slot
         val slotTop = slot.center.y - slot.halfLength
         val rules = PracticeRules(HARD_SPEED_MPS, HARD_TIME_LIMIT_SEC, hornTimes, situation)
