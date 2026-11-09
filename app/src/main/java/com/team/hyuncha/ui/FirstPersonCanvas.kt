@@ -221,6 +221,7 @@ private fun DrawScope.drawPerspectiveScene(scene: Scene, assets: TopAssets, cam:
 
     // 벽은 항상 맨 뒤(주차장 바깥 테두리)라 먼저 그림
     map.walls.forEach { box3(cam, Box(it, 0.0, 2.6, Wall3D, shade(Wall3D, 1.1))) }
+    map.pillars.forEach { box3(cam, Box(it, 0.0, 2.6, Wall3D, shade(Wall3D, 1.1))) }
 
     // 주차된 차·바퀴 멈춤턱: 먼 것부터 그려서 가까운 것이 위에 오게
     val boxes = ArrayList<Pair<Double, List<Box>>>()

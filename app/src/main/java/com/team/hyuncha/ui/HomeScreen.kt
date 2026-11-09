@@ -22,7 +22,9 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.team.hyuncha.data.CarSpec
+import com.team.hyuncha.sim.HardSituation
 import com.team.hyuncha.sim.ParkingMode
+import androidx.compose.ui.graphics.Color
 import com.team.hyuncha.ui.theme.LocalAppTextScale
 
 @Composable
@@ -30,6 +32,8 @@ fun HomeScreen(
     car: CarSpec, onChooseCar: () -> Unit, onSettings: () -> Unit, onStart: () -> Unit,
     mode: ParkingMode = ParkingMode.PERPENDICULAR, onModeChange: (ParkingMode) -> Unit = {},
     onRanking: () -> Unit = {},
+    hardMode: Boolean = false, onHardModeChange: (Boolean) -> Unit = {},
+    hardSituation: HardSituation? = null, onHardSituationChange: (HardSituation?) -> Unit = {},
 ) {
     val colors = MaterialTheme.colorScheme
     val scale = (LocalDensity.current.fontScale * LocalAppTextScale.current).coerceAtLeast(1f)
@@ -120,10 +124,56 @@ fun HomeScreen(
                         Spacer(Modifier.height(12.dp))
                         diagonal(Modifier.fillMaxWidth())
                     }
+                    Spacer(Modifier.height(12.dp))
+                    HardModeChoice(hardMode, onHardModeChange, hardSituation, onHardSituationChange)
                     Text("P단을 유지하고, 전진·후진은 앱에서 선택하세요.", Modifier.padding(top = 18.dp),
                         color = colors.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
                     Spacer(Modifier.height(12.dp))
                 }
+            }
+        }
+    }
+}
+
+/**
+ * 하드 모드 (T자 주차만): 제한시간 40초 · 8km/h · 클락션 · 좁은 칸 + 랜덤 상황.
+ * 켜면 상황을 고르는 버튼이 나옴 — 확인용이라 나중에 뺄 예정 (HardSituationPicker만 지우면 됨)
+ */
+@Composable
+private fun HardModeChoice(
+    on: Boolean, onChange: (Boolean) -> Unit,
+    situation: HardSituation?, onSituationChange: (HardSituation?) -> Unit,
+) {
+    val c = MaterialTheme.colorScheme
+    Surface(onClick = { onChange(!on) }, modifier = Modifier.fillMaxWidth().testTag("hard_mode"),
+        shape = RoundedCornerShape(24.dp), color = if (on) c.surfaceVariant else c.surface,
+        border = if (on) BorderStroke(2.dp, Color(0xFFFF6B6B)) else null) {
+        Column(Modifier.padding(24.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("하드 모드", Modifier.weight(1f), style = MaterialTheme.typography.titleMedium,
+                    fontWeight = if (on) FontWeight.Bold else FontWeight.Normal, color = if (on) Color(0xFFFF6B6B) else c.onSurface)
+                Text(if (on) "켜짐 · T자 주차" else "꺼짐", color = c.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+            }
+            Text("T자 주차 · 제한시간 40초 · 속도 8km/h · 클락션 3번 · 좁은 칸 + 랜덤 상황(기둥 옆 / 옆 차 침범 / 이중주차)",
+                Modifier.padding(top = 6.dp), color = c.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+            if (on) HardSituationPicker(situation, onSituationChange)
+        }
+    }
+}
+
+/** 확인용: 하드 모드 상황 직접 고르기 (나중에 뺄 예정) */
+@Composable
+private fun HardSituationPicker(situation: HardSituation?, onChange: (HardSituation?) -> Unit) {
+    Column(Modifier.padding(top = 12.dp)) {
+        Text("상황 고르기 (확인용)", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+        Row(Modifier.padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            (listOf<HardSituation?>(null) + HardSituation.entries).forEach { s ->
+                FilterChip(
+                    selected = situation == s,
+                    onClick = { onChange(s) },
+                    label = { Text(s?.label ?: "랜덤") },
+                    modifier = Modifier.testTag("hard_pick_${s?.name ?: "RANDOM"}"),
+                )
             }
         }
     }

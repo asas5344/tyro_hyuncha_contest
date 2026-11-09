@@ -10,7 +10,7 @@ import kotlin.math.hypot
 import kotlin.math.sin
 import kotlin.math.tan
 
-enum class SimStatus { DRIVING, COLLIDED, PARKED }
+enum class SimStatus { DRIVING, COLLIDED, PARKED, TIMEOUT }
 
 /** 주차 성공 시 채점 결과 */
 data class ParkingResult(
@@ -36,6 +36,14 @@ class ParkingSimulator(val car: CarSpec, val map: ParkingMap) {
     var directionChanges = 0; private set
     var elapsedSec = 0.0; private set
     var movingSec = 0.0; private set           // 차가 실제로 움직인 시간
+    /** 처음 움직인 시각 (제한시간·클락션은 여기서부터 셈). 아직 안 움직였으면 null */
+    var startedAtSec: Double? = null; private set
+
+    /** 처음 움직인 뒤 지난 시간 (제한시간·클락션 기준) */
+    val clockSec: Double get() = startedAtSec?.let { elapsedSec - it } ?: 0.0
+
+    /** 남은 제한시간. 제한시간이 없으면 null */
+    val timeLeftSec: Double? get() = map.rules.timeLimitSec?.let { (it - clockSec).coerceAtLeast(0.0) }
 
     /** 지나온 경로 (화면 궤적 표시용, 일정 거리마다) */
     val trail = mutableListOf(map.start)
@@ -90,8 +98,8 @@ class ParkingSimulator(val car: CarSpec, val map: ParkingMap) {
         // 2) 목표 속도: 브레이크를 밟으면 0, 떼면 크리프 속도
         val target = when {
             input.brakePressed -> 0.0
-            input.direction == Direction.FORWARD -> CREEP_SPEED
-            else -> -CREEP_SPEED
+            input.direction == Direction.FORWARD -> map.rules.creepSpeedMps
+            else -> -map.rules.creepSpeedMps
         }
         // 순간적으로 바뀌지 않고 가속·감속 한계 안에서 목표 속도로 다가감
         val limit = (if (abs(target) < abs(speed) || target * speed < 0) BRAKE_DECEL else CREEP_ACCEL) * dt
@@ -99,6 +107,7 @@ class ParkingSimulator(val car: CarSpec, val map: ParkingMap) {
 
         // 전진·후진 전환 횟수: 실제로 움직인 방향이 바뀔 때만 셈
         if (abs(speed) > MOVING_THRESHOLD) {
+            if (startedAtSec == null) startedAtSec = elapsedSec
             movingSec += dt
             val moving = if (speed > 0) Direction.FORWARD else Direction.REVERSE
             if (lastMoveDirection != null && moving != lastMoveDirection) {
@@ -126,7 +135,11 @@ class ParkingSimulator(val car: CarSpec, val map: ParkingMap) {
             status = SimStatus.COLLIDED
             recordFrame(input)
             val (part, point) = Contact.find(nextBody, hit)
-            val kind = if (hit in map.walls) ObstacleKind.WALL else ObstacleKind.PARKED_CAR
+            val kind = when (hit) {
+                in map.walls -> ObstacleKind.WALL
+                in map.pillars -> ObstacleKind.PILLAR
+                else -> ObstacleKind.PARKED_CAR
+            }
             events += SimEvent.Collided(elapsedSec, point, part, kind)
             return
         }
@@ -145,6 +158,13 @@ class ParkingSimulator(val car: CarSpec, val map: ParkingMap) {
                 movingSec = movingSec,
             )
         }
+
+        // 6) 제한시간 (하드 모드): 처음 움직인 뒤 시간이 다 되면 그 자리에서 멈추고 실패
+        val timeLimit = map.rules.timeLimitSec
+        if (status == SimStatus.DRIVING && timeLimit != null && clockSec >= timeLimit) {
+            speed = 0.0
+            status = SimStatus.TIMEOUT
+        }
         recordFrame(input)
     }
 
@@ -158,6 +178,7 @@ class ParkingSimulator(val car: CarSpec, val map: ParkingMap) {
         directionChanges = 0
         elapsedSec = 0.0
         movingSec = 0.0
+        startedAtSec = null
         lastMoveDirection = null
         trail.clear()
         trail.add(start)

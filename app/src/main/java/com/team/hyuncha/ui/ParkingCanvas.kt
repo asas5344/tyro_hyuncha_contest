@@ -230,6 +230,11 @@ internal fun DrawScope.drawTopScene(scene: Scene, assets: TopAssets, proj: Proje
     drawGround(map, proj, assets.speckles)
     drawBays(map, proj, textMeasurer, pulse)
     drawAisleArrows(map, proj)
+    // 기둥 (하드 모드): 바닥 위에 콘크리트 + 노란 테두리
+    map.pillars.forEach {
+        drawOriented(it, proj, WallConcrete)
+        drawOriented(it, proj, Color(0xFFFFC83D), Stroke(width = proj.m(0.06)))
+    }
 
     map.parkedCars.forEachIndexed { i, rect ->
         // 주차된 차는 색과 방향을 섞어서 같은 차만 늘어선 느낌을 줄임

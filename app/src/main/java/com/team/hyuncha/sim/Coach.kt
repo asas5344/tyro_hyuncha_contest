@@ -7,6 +7,7 @@ import java.util.Locale
 import kotlin.math.PI
 import kotlin.math.abs
 import kotlin.math.hypot
+import kotlin.math.roundToInt
 import kotlin.math.tan
 
 /** 모범 주행의 한 단계 (재생할 때 자막으로 보여줌) */
@@ -244,7 +245,16 @@ object Coach {
     fun feedback(mine: ParkingSimulator, plan: CoachPlan?): List<String> = when (mine.status) {
         SimStatus.PARKED -> successFeedback(mine, plan)
         SimStatus.COLLIDED -> collisionFeedback(mine, plan)
+        SimStatus.TIMEOUT -> timeoutFeedback(mine, plan)
         SimStatus.DRIVING -> emptyList()
+    }
+
+    /** 제한시간 초과: 모범 주행은 몇 초에 끝났는지, 전환을 많이 했는지 */
+    private fun timeoutFeedback(mine: ParkingSimulator, plan: CoachPlan?): List<String> {
+        val lines = mutableListOf("제한시간 ${mine.map.rules.timeLimitSec?.toInt() ?: 0}초 안에 주차하지 못했어요.")
+        plan?.run?.let { model -> lines += "모범 주행은 움직이기 시작해서 ${model.clockSec.roundToInt()}초 만에 끝났어요. 모범 주행을 보고 순서를 익혀 보세요." }
+        if (mine.directionChanges >= 3) lines += "전진·후진을 ${mine.directionChanges}번 바꿨어요. 멈추는 위치를 정확히 맞추면 한 번에 들어갈 수 있어요."
+        return lines.take(3)
     }
 
     private fun successFeedback(mine: ParkingSimulator, plan: CoachPlan?): List<String> {

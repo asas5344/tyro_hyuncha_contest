@@ -16,6 +16,7 @@ import com.team.hyuncha.data.CarPresets
 import com.team.hyuncha.data.ScoreRecords
 import com.team.hyuncha.data.UiPreferences
 import com.team.hyuncha.input.SteeringUnit
+import com.team.hyuncha.sim.HardSituation
 import com.team.hyuncha.sim.ParkingMode
 import com.team.hyuncha.ui.theme.HyunchaTheme
 import com.team.hyuncha.ui.theme.LocalAppTextScale
@@ -38,6 +39,10 @@ fun HyunchaApp(vehicle: Vehicle?, preferences: UiPreferences? = null, scoreRecor
     var choosingCar by rememberSaveable { mutableStateOf(false) }
     var parkingModeName by rememberSaveable { mutableStateOf(ParkingMode.PERPENDICULAR.name) }
     val parkingMode = ParkingMode.valueOf(parkingModeName)
+    // 하드 모드 (T자 주차만). hardSituationName: 확인용 상황 고르기, null이면 랜덤 (나중에 뺄 예정)
+    var hardMode by rememberSaveable { mutableStateOf(false) }
+    var hardSituationName by rememberSaveable { mutableStateOf<String?>(null) }
+    val hardSituation = hardSituationName?.let { HardSituation.valueOf(it) }
     val textSize = AppTextSize.entries.firstOrNull { it.name == textSizeName } ?: AppTextSize.STANDARD
     val selectedCar = CarPresets.all.firstOrNull { it.name == carName } ?: CarPresets.GRANDEUR
     BackHandler(choosingCar || screen != "home") {
@@ -54,7 +59,8 @@ fun HyunchaApp(vehicle: Vehicle?, preferences: UiPreferences? = null, scoreRecor
                                 modifier = Modifier.padding(16.dp).testTag("back_home"), icon = "back")
                             ParkingScreen(vehicle, Modifier.weight(1f), initialCar = selectedCar, parkingMode = parkingMode,
                                 steeringUnit = steeringUnit, invertSteering = invertSteering, carCamera = carCamera,
-                                driverName = driverName, records = records)
+                                driverName = driverName, records = records,
+                                hardMode = hardMode && parkingMode == ParkingMode.PERPENDICULAR, hardSituation = hardSituation)
                         }
                         "settings" -> SettingsScreen(textSize, dark,
                             onTextSizeChange = { textSizeName = it.name; store.textSize = it },
@@ -70,7 +76,12 @@ fun HyunchaApp(vehicle: Vehicle?, preferences: UiPreferences? = null, scoreRecor
                         "ranking" -> RankingScreen(records, initialMode = parkingMode, onBack = { screen = "home" })
                         else -> HomeScreen(selectedCar, onChooseCar = { choosingCar = true },
                             onSettings = { screen = "settings" }, onStart = { screen = "parking" },
-                            mode = parkingMode, onModeChange = { parkingModeName = it.name },
+                            mode = parkingMode,
+                            onModeChange = { parkingModeName = it.name; if (it != ParkingMode.PERPENDICULAR) hardMode = false },
+                            hardMode = hardMode,
+                            onHardModeChange = { on -> hardMode = on; if (on) parkingModeName = ParkingMode.PERPENDICULAR.name },
+                            hardSituation = hardSituation,
+                            onHardSituationChange = { hardSituationName = it?.name },
                             onRanking = { screen = "ranking" })
                     }
                     if (choosingCar) CarSelectionSheet(selectedCar, onSelect = {
