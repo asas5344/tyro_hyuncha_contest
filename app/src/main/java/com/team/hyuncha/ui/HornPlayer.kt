@@ -4,16 +4,18 @@ import android.media.AudioAttributes
 import android.media.AudioFormat
 import android.media.AudioTrack
 import kotlin.math.PI
-import kotlin.math.min
 import kotlin.math.sin
+import kotlin.math.tanh
+
+internal const val HORN_DURATION_MS = 1_600
 
 /**
- * 하드 모드 클락션 소리. 소리 파일 없이 자동차 경적처럼 두 음(약 420Hz·520Hz)을 섞어 직접 만듦.
+ * 하드 모드 클락션 소리. 낮은 두 음과 강한 고조파를 섞어 길게 울리는 자동차 경적을 만든다.
  * 앱이 낼 수 있는 가장 큰 크기(트랙 볼륨 최대)로 재생. 실제 크기는 차의 음량 설정을 따름.
  */
 class HornPlayer {
     private val sampleRate = 44_100
-    private val pcm: ShortArray = buildHorn(0.7)
+    private val pcm: ShortArray = buildHorn()
     private val track: AudioTrack = AudioTrack.Builder()
         .setAudioAttributes(AudioAttributes.Builder()
             .setUsage(AudioAttributes.USAGE_GAME)
@@ -43,18 +45,21 @@ class HornPlayer {
 
     fun release() = runCatching { track.release() }
 
-    /** 두 음을 섞고 고조파를 조금 넣어 거친 경적 느낌. 앞뒤 20ms는 부드럽게 (딸깍 소리 방지) */
-    private fun buildHorn(seconds: Double): ShortArray {
-        val n = (sampleRate * seconds).toInt()
-        val fade = (sampleRate * 0.02).toInt()
-        return ShortArray(n) { i ->
-            val t = i.toDouble() / sampleRate
-            var v = 0.0
-            for (f in listOf(420.0, 520.0)) {
-                v += sin(2 * PI * f * t) + 0.45 * sin(2 * PI * f * 2 * t) + 0.25 * sin(2 * PI * f * 3 * t)
-            }
-            val env = min(1.0, min(i, n - 1 - i).toDouble() / fade)
-            (v / 3.4 * env * 0.95 * Short.MAX_VALUE).toInt().coerceIn(Short.MIN_VALUE.toInt(), Short.MAX_VALUE.toInt()).toShort()
+    private fun buildHorn(): ShortArray {
+        val sampleCount = sampleRate * HORN_DURATION_MS / 1_000
+        val attackSamples = sampleRate * 12 / 1_000
+        val releaseSamples = sampleRate * 90 / 1_000
+        return ShortArray(sampleCount) { index ->
+            val time = index.toDouble() / sampleRate
+            val signal = hornTone(392.0, time) + hornTone(494.0, time)
+            val envelope = minOf(1.0, index.toDouble() / attackSamples, (sampleCount - 1 - index).toDouble() / releaseSamples)
+            // 파형의 꼭대기를 부드럽게 눌러 음량을 키우지 않고도 더 거친 소리를 낸다.
+            (tanh(1.15 * signal) * envelope * 0.95 * Short.MAX_VALUE).toInt().toShort()
         }
+    }
+
+    private fun hornTone(frequency: Double, time: Double): Double {
+        val phase = 2 * PI * frequency * time
+        return sin(phase) + 0.65 * sin(2 * phase) + 0.40 * sin(3 * phase) + 0.18 * sin(4 * phase)
     }
 }
