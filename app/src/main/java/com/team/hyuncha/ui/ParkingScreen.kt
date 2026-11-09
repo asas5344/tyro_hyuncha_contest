@@ -186,11 +186,11 @@ fun ParkingScreen(
         onDispose { if (mode == InputMode.VEHICLE) vehicleInput?.stop() }
     }
 
-    // 하드 모드 클락션: 처음 움직인 뒤 정해진 시각(4초 + 랜덤 2번)에 크게 울리고 화면에 "빵빵!"을 1초
-    val horn = remember { HornPlayer() }
-    DisposableEffect(horn) { onDispose { horn.release() } }
+    // 새 판 또는 화면 이탈 시 재생 중인 클락션도 정리한다.
+    val horn = remember(sim) { if (sim.map.rules.isHard) HornPlayer() else null }
+    DisposableEffect(horn) { onDispose { horn?.release() } }
     val hornNext = remember(sim) { intArrayOf(0) }
-    val hornFlashUntil = remember(sim) { mutableDoubleStateOf(-1.0) }
+    val hornStartedAt = remember(sim) { mutableLongStateOf(0L) }
 
     // 게임 루프: 화면이 그려질 때마다(약 60fps) 시뮬레이터를 한 번씩 진행
     LaunchedEffect(sim) {
@@ -216,11 +216,11 @@ fun ParkingScreen(
                         hornNext[0] < horns.size && sim.clockSec >= horns[hornNext[0]]
                     ) {
                         hornNext[0]++
-                        horn.honk()
-                        hornFlashUntil.doubleValue = sim.clockSec + 1.0
+                        horn?.honk()
+                        hornStartedAt.longValue = now
                     }
                 }
-                frame.longValue++
+                frame.longValue = now
             }
         }
     }
@@ -395,7 +395,6 @@ fun ParkingScreen(
                 // 하드 모드: 남은 시간·상황, 클락션
                 if (sim.map.rules.isHard && !replaying) {
                     HardModeBar(sim, { frame.longValue }, Modifier.align(Alignment.TopCenter).padding(top = 12.dp))
-                    HornFlashIfOn(sim, { frame.longValue }, hornFlashUntil.doubleValue, Modifier.align(Alignment.Center))
                 }
                 // 음성 명령: 듣는 중이면 들린 말, 끝나면 결과를 위쪽 가운데에 잠깐 보여줌
                 VoiceBubble(voice, voiceMessage, Modifier.align(Alignment.TopCenter).padding(top = 72.dp))
@@ -427,6 +426,9 @@ fun ParkingScreen(
                         .fillMaxHeight(),
                 )
             }
+        }
+        if (sim.map.rules.isHard && !replaying) {
+            HornFlashIfOn({ frame.longValue }, hornStartedAt.longValue, Modifier.matchParentSize())
         }
     }
 }
@@ -536,11 +538,14 @@ private fun SimHud(
     }
 }
 
-/** 클락션이 울린 뒤 1초 동안 화면 가운데 "빵빵!" */
 @Composable
-private fun HornFlashIfOn(sim: ParkingSimulator, frame: () -> Long, until: Double, modifier: Modifier) {
-    frame()
-    if (sim.clockSec < until) HornFlash(modifier)
+private fun HornFlashIfOn(frame: () -> Long, startedAt: Long, modifier: Modifier) {
+    if (startedAt == 0L) return
+    val elapsedMs = (frame() - startedAt) / 1_000_000f
+    if (elapsedMs < HORN_DURATION_MS) {
+        val strength = ((HORN_DURATION_MS - elapsedMs) / 650f).coerceIn(0f, 1f)
+        HornFlash(strength, modifier)
+    }
 }
 
 /** 음성 명령 버튼: 누르면 한 번 듣고, 듣는 중에 다시 누르면 그만 들음 */
