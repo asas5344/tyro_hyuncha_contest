@@ -16,3 +16,13 @@
 .cxx
 local.properties
 .kotlin
+
+# Android build outputs in every module
+**/build/
+
+# Local Python caches and historical render artifacts
+__pycache__/
+verification/*
+!verification/mirrors/
+verification/mirrors/*
+!verification/mirrors/*-assembly-final.jpg

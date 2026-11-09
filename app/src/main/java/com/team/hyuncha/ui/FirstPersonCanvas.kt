@@ -319,6 +319,24 @@ private fun headFor(car: CarSpec, side: LookSide): Head {
     return Head(Math.toDegrees(atan2(db, da)), Math.toDegrees(atan2(-dz, flat)), fov)
 }
 
+/** The same driving aid used by the original cockpit, shared with the 3D presentation. */
+@Composable
+internal fun DriverMinimap(
+    sim: ParkingSimulator,frame: () -> Long,direction: () -> Direction,braking: () -> Boolean,
+    replay: () -> ReplayView?,modifier: Modifier,
+) {
+    val assets=rememberTopAssets(sim)
+    val textMeasurer=rememberTextMeasurer()
+    Canvas(modifier) {
+        frame()
+        val scene=sceneOf(sim,replay(),direction(),braking())
+        val area=Rect(0f,0f,size.width,size.height)
+        drawScreenFrame(area,"미니맵",textMeasurer) {
+            drawSurround(scene,assets,area,viewM=18.0,textMeasurer=textMeasurer)
+        }
+    }
+}
+
 /**
  * 1인칭(운전석) 주차 화면.
  * - 운전석에서 본 앞유리 너머 + 실내(보닛·와이퍼·앞 기둥·문·룸미러·선바이저·대시보드·송풍구·계기판·핸들)

@@ -35,6 +35,10 @@ object LookButtons {
             }
         }
 
+    fun select(side: LookSide) {
+        if (active) this.side = side
+    }
+
     private const val HOLD_MS = 500L   // 이보다 오래 누르면 "누르는 동안만 보기"
     private var downAt = 0L
     private var pressed: Int? = null   // 지금 누르고 있는 버튼 (짝이 없는 "뗌" 신호는 무시)

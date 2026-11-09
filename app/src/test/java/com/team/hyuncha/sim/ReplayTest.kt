@@ -100,6 +100,24 @@ class ReplayTest {
         assertTrue(sim.events.isEmpty())
     }
 
+    @Test
+    fun 계기판_재생은_기록된_실제_속도를_사용하고_충돌_정지도_기록된다() {
+        val sim=newSim()
+        val input=ReplayInput(brakePressed=false)
+        repeat(100) { sim.step(input,dt) }
+        val moving=sim.history.last()
+        assertEquals(sim.speed,moving.speedMps,0.0)
+        input.brakePressed=true
+        repeat(100) { sim.step(input,dt) }
+        assertEquals(0.0,sim.history.last().speedMps,0.0)
+        assertEquals(moving.speedMps,sim.frameAt(moving.timeSec).speedMps,0.0)
+        sim.reset()
+        input.direction=Direction.REVERSE;input.brakePressed=false
+        repeat(2000) { sim.step(input,dt) }
+        assertEquals(SimStatus.COLLIDED,sim.status)
+        assertEquals(0.0,sim.history.last().speedMps,0.0)
+    }
+
     private fun <T> assertNotNullAndGet(value: T?): T {
         assertNotNull(value)
         return value!!
