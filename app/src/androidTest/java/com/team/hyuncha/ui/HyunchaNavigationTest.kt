@@ -7,6 +7,7 @@ import java.io.File
 import java.io.FileOutputStream
 import androidx.compose.ui.test.*
 import androidx.compose.ui.unit.DpRect
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.height
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.test.platform.app.InstrumentationRegistry
@@ -44,7 +45,7 @@ class HyunchaNavigationTest {
     }
     private fun openApp() { compose.setContent { HyunchaApp(vehicle = null, preferences = store) }; settle() }
 
-    @Test fun hardModeFitsBelowParkingChoicesAndKeepsStartButtonFixed() {
+    @Test fun hardModeStaysAtHomeBottomAndKeepsStartButtonFixed() {
         store.textSize = AppTextSize.EXTRA_LARGE
         openApp()
         val home = compose.onNodeWithTag("home_screen").getUnclippedBoundsInRoot()
@@ -57,13 +58,21 @@ class HyunchaNavigationTest {
         }
         val start = assertWithinHome("start_practice")
         val modesBottom = assertWithinHome("mode_DIAGONAL").bottom
-        assertTrue(assertWithinHome("hard_mode").top >= modesBottom)
-        compose.onNodeWithTag("hard_mode").performClick(); settle()
-        assertTrue(assertWithinHome("hard_mode").top >= modesBottom)
+        val collapsedCard = assertWithinHome("hard_mode")
+        assertEquals((home.bottom - 24.dp).value, collapsedCard.bottom.value, 1f)
+        val card = compose.onNodeWithTag("hard_mode").assertIsOff()
+        val switch = compose.onNodeWithTag("hard_mode_switch", useUnmergedTree = true).assertIsDisplayed()
+        switch.performTouchInput { click() }; settle()
+        card.assertIsOn()
+        val expandedCard = assertWithinHome("hard_mode")
+        assertTrue(expandedCard.top >= modesBottom)
+        assertEquals(collapsedCard.bottom, expandedCard.bottom)
         listOf("RANDOM", "PILLAR", "ENCROACH", "DOUBLE_PARKED").forEach { assertWithinHome("hard_pick_$it") }
         assertEquals(start, assertWithinHome("start_practice"))
         capture("home_screen", "home-hard-mode.png")
-        compose.onNodeWithTag("hard_mode").performClick(); settle()
+        switch.performTouchInput { click() }; settle()
+        card.assertIsOff()
+        assertEquals(collapsedCard, assertWithinHome("hard_mode"))
         assertEquals(start, assertWithinHome("start_practice"))
     }
 

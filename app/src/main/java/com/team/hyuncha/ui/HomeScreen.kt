@@ -8,6 +8,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -19,6 +20,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.team.hyuncha.data.CarSpec
@@ -66,6 +68,7 @@ fun HomeScreen(
                 val compactHeader = maxWidth < 850.dp
                 val diameter = controlHeight(if (maxHeight < 850.dp) 200.dp else 260.dp)
                 Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())
+                    .heightIn(min = maxHeight)
                     .padding(if (wide) 44.dp else 24.dp, 24.dp)) {
                     val heading: @Composable (Modifier) -> Unit = { modifier ->
                         Column(modifier) {
@@ -127,6 +130,7 @@ fun HomeScreen(
                     Text("P단을 유지하고, 전진·후진은 앱에서 선택하세요.", Modifier.padding(top = 18.dp),
                         color = colors.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
                     Spacer(Modifier.height(16.dp))
+                    Spacer(Modifier.weight(1f))
                     HardModeChoice(hardMode, onHardModeChange, hardSituation, onHardSituationChange)
                 }
             }
@@ -144,7 +148,8 @@ private fun HardModeChoice(
     situation: HardSituation?, onSituationChange: (HardSituation?) -> Unit,
 ) {
     val c = MaterialTheme.colorScheme
-    Surface(onClick = { onChange(!on) }, modifier = Modifier.fillMaxWidth().testTag("hard_mode"),
+    Surface(modifier = Modifier.fillMaxWidth().testTag("hard_mode")
+        .toggleable(value = on, role = Role.Switch, onValueChange = onChange),
         shape = RoundedCornerShape(24.dp), color = if (on) c.surfaceVariant else c.surface,
         border = if (on) BorderStroke(2.dp, Color(0xFFFF6B6B)) else null) {
         Column(Modifier.padding(horizontal = 24.dp, vertical = 16.dp)) {
@@ -152,6 +157,8 @@ private fun HardModeChoice(
                 Text("하드 모드", Modifier.weight(1f), style = MaterialTheme.typography.titleMedium,
                     fontWeight = if (on) FontWeight.Bold else FontWeight.Normal, color = if (on) Color(0xFFFF6B6B) else c.onSurface)
                 Text(if (on) "켜짐 · T자 주차" else "꺼짐", color = c.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+                Spacer(Modifier.width(12.dp))
+                Switch(checked = on, onCheckedChange = null, modifier = Modifier.testTag("hard_mode_switch"))
             }
             Text("T자 주차 · 제한시간 40초 · 속도 8km/h · 클락션 3번 · 좁은 칸 + 랜덤 상황(기둥 옆 / 옆 차 침범 / 이중주차)",
                 Modifier.padding(top = 6.dp), color = c.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
