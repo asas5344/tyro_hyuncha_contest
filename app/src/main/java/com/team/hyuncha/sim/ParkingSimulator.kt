@@ -120,11 +120,11 @@ class ParkingSimulator(val car: CarSpec, val map: ParkingMap) {
         val nextBody = bodyRect(next)
         pose = next
         recordTrail()
-        recordFrame(input)
         val hit = map.obstacles.firstOrNull { it.intersects(nextBody) }
         if (hit != null) {
             speed = 0.0
             status = SimStatus.COLLIDED
+            recordFrame(input)
             val (part, point) = Contact.find(nextBody, hit)
             val kind = if (hit in map.walls) ObstacleKind.WALL else ObstacleKind.PARKED_CAR
             events += SimEvent.Collided(elapsedSec, point, part, kind)
@@ -145,6 +145,7 @@ class ParkingSimulator(val car: CarSpec, val map: ParkingMap) {
                 movingSec = movingSec,
             )
         }
+        recordFrame(input)
     }
 
     /** 처음 상태로 되돌림 (start를 주면 그 위치에서 시작 — 테스트용) */
@@ -167,10 +168,10 @@ class ParkingSimulator(val car: CarSpec, val map: ParkingMap) {
 
     /** 다시 보여주기 기록. 직전 기록과 차 상태가 같으면(멈춰 있음) 저장하지 않음 */
     private fun recordFrame(input: DrivingInput) {
-        val frame = SimFrame(elapsedSec, pose, wheelAngleDeg, input.brakePressed, input.direction)
+        val frame = SimFrame(elapsedSec, pose, wheelAngleDeg, input.brakePressed, input.direction, speedMps = speed)
         val last = history.last()
         if (last.pose != frame.pose || last.wheelAngleDeg != frame.wheelAngleDeg ||
-            last.braking != frame.braking || last.direction != frame.direction
+            last.braking != frame.braking || last.direction != frame.direction || last.speedMps != frame.speedMps
         ) history += frame
     }
 

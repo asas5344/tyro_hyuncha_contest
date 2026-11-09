@@ -9,6 +9,7 @@ data class SimFrame(
     val wheelAngleDeg: Double,
     val braking: Boolean,
     val direction: Direction,
+    val speedMps: Double = 0.0,
 )
 
 /** 차의 어느 부분이 닿았는지. 조사(이/가)까지 붙여서 문장을 바로 만들 수 있게 함 */

@@ -1,0 +1,23 @@
+material {
+    name : camera_feed,
+    shadingModel : unlit,
+    parameters : [ { type : sampler2d, name : cameraFeed },
+        { type : bool, name : renderTarget }, { type : bool, name : rounded } ],
+    requires : [ uv0 ],
+    flipUV : false,
+    doubleSided : true,
+    culling : none
+}
+fragment {
+    void material(inout MaterialInputs material) {
+        prepareMaterial(material);
+        float2 uv = getUV0();
+        float2 corner = abs(uv * 2.0 - 1.0);
+        if (materialParams.rounded && pow(corner.x, 4.0) + pow(corner.y, 4.0) > 1.0) discard;
+        if (materialParams.renderTarget) uv = uvToRenderTargetUV(uv);
+        else uv.y = 1.0 - uv.y;
+        material.baseColor = texture(materialParams_cameraFeed, uv);
+        // This LDR camera image is already tone mapped; undo it before the main view maps it again.
+        if (materialParams.renderTarget) material.baseColor.rgb = inverseTonemapSRGB(material.baseColor.rgb);
+    }
+}

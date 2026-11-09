@@ -3,9 +3,8 @@
 현대차·기아 차량용 앱 공모전(안전운전 부문) 출품작.
 차가 P단에 서 있는 상태에서 **실제 핸들과 브레이크로** 화면 속 차를 움직여 주차를 연습하는 Pleos Connect 앱입니다.
 
-- 주차 3가지: T자 주차·평행 주차·사선 주차 (목표 칸과 주차된 차가 매번 랜덤)
-- 시점 2가지: **운전석(1인칭)** — 실내·계기판·룸미러, 핸들 ◀◀/▶▶ 버튼으로 고개를 돌려 사이드미러 보기,
-  후진하면 후방 카메라 또는 서라운드 뷰 / **탑뷰** — 위에서 내려다본 화면 (주차 화면 왼쪽 아래 버튼으로 전환)
+- 실제 3D 운전석과 탑뷰로 연습하는 주차 3가지: T자 주차·평행 주차·사선 주차 (목표 칸과 주차된 차가 매번 랜덤)
+- 운전석의 미러 확인, 후방/서라운드 화면과 탑뷰 전환 지원
 - 차종 선택: 아반떼·그랜저 (세단), 투싼·싼타페 (SUV) — 차 크기와 회전 반경이 반영됨
 - 입력 2가지: **화면 조작** (슬라이더·버튼·키보드) / **실제 차량** (Pleos Vehicle SDK)
 - 안전 잠금: 실제 차량 모드는 기어가 P일 때만 진행
@@ -13,6 +12,16 @@
 - 성공하면 **1000점 만점 점수**와 S~D 등급, 항목별 근거 + 코치 피드백 + 모범 주행 다시 보기
   (각도 300 · 좌우 위치 200 · 앞뒤 위치 100 · 전후진 전환 200 · 주행 시간 200, 기준은 `sim/Score.kt` 주석)
 - **랭킹**: 주차 방식별 점수 순위 (이 기기 안에 저장, 이름은 설정 > 운전자 이름)
+
+## 현재 개발 상태
+
+`feature/realistic` 브랜치에서 3D 운전석을 개발하고 있습니다. Filament 3D 운전석을 기본으로 사용하며, 기존 주행·충돌·주차 판정과 운전석 조작 방식을 유지합니다. 별도의 기존/3D 운전석 선택 UI는 없습니다.
+
+- 구현: 네 차종 GLB, 승인된 그랜저 외형, 공통 실내와 차종별 눈높이, 미러·후방 화면·다시 보기 연결.
+- 확인: APK·계측 APK 빌드 및 단위 테스트 89개 통과. 네 차종×세 주차 방식의 3D 회귀 검사 통과. 실제 차량 모드의 브레이크 안내창과 시점 버튼은 사용자 확인 완료.
+- 남은 범위: 다른 차종 외형 품질 개선, 영상 방향·실제 차량 입력의 세부 실사용 검수, 성능·장시간 안정성 측정. 지속 30fps는 미검증입니다. 회귀 검사는 화면 표시·전환과 시뮬레이터 동작을 확인하며, 외형의 최종 시각 승인을 의미하지 않습니다.
+
+개발 상태, 검증 기록, 재생성 방법과 차량 이미지 제작 기록은 [SESSION_HANDOFF.md](SESSION_HANDOFF.md)에서 확인할 수 있습니다.
 
 ---
 
@@ -42,8 +51,10 @@ Android Studio > Device Manager > Pleos Connect ▶. **홈 화면이 다 뜰 때
 ### ② 앱 실행
 Android Studio에서 ▶ Run (또는 터미널에서 아래 "빌드" 참고).
 
-### ③ Virtual Console 준비 (실제 차량 모드로 테스트할 때)
-프로젝트 폴더에서 한 줄 실행:
+### ③ Virtual Console 준비 (실제 차량 모드로 테스트할 때, macOS 도우미)
+다른 환경에서는 `adb forward tcp:8088 tcp:8088` 후 브라우저에서 `http://127.0.0.1:8088`을 열고, 개발자 콘솔에서 `tools/virtual-console-keyboard.js`를 실행합니다. Q·E 연결에는 `tools/steering-buttons-bridge.py`도 필요합니다.
+
+macOS에서는 프로젝트 폴더에서 도우미를 실행할 수 있습니다:
 
 ```bash
 ./tools/start-console.sh
@@ -103,11 +114,12 @@ Android Studio에서 ▶ Run (또는 터미널에서 아래 "빌드" 참고).
 ## 4. 빌드·테스트 (터미널)
 
 ```bash
-export JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home"
-./gradlew :app:testDebugUnitTest      # 단위 테스트 (자전거 모델, 충돌, 주차 성공 판정)
-./gradlew :app:assembleDebug          # APK 빌드
-~/Library/Android/sdk/platform-tools/adb install -r app/build/outputs/apk/debug/app-debug.apk
+./gradlew :app:testDebugUnitTest :app:assembleDebug
+adb install -r --user current app/build/outputs/apk/debug/app-debug.apk
+adb shell am start --user current -W -n com.team.hyuncha/.MainActivity
 ```
+
+프로젝트 루트에서 실행합니다. Android Studio의 Gradle JDK 또는 `JAVA_HOME`을 설정하고, Android SDK의 `platform-tools`를 `PATH`에 추가하세요. Windows에서는 `gradlew.bat`을 사용합니다. 다중 사용자 에뮬레이터는 현재 화면의 사용자에 앱을 설치·실행해야 합니다.
 
 ---
 
@@ -121,9 +133,10 @@ app/src/main/java/com/team/hyuncha/
 │   ├── VehicleInput.kt    Pleos SDK: 조향각·브레이크·기어 리스너
 │   └── LookButtons.kt     핸들 ◀◀/▶▶ 버튼 → 운전석 화면에서 고개 돌리기
 ├── safety/SafetyLock.kt   P단 확인
-├── sim/                   자전거 모델, 충돌(SAT)·성공 판정, 주차장 맵, 코치(모범 주행), 점수(Score.kt)
-├── data/                  차종 제원, 화면 설정, 랭킹 기록(Ranking.kt)
-└── ui/                    탑뷰·운전석 화면 그리기, 결과 카드, 랭킹 화면, 설정
+├── sim/                   자전거 모델, 충돌·성공 판정, 주차장 맵, 코치·점수
+├── data/                  차종 제원, 화면 설정, 랭킹 기록
+├── render3d/              Filament 렌더러, 카메라·미러·차종 프로필
+└── ui/                    3D 운전석, 탑뷰, 조작·결과·랭킹·설정 화면
 tools/
 ├── start-console.sh               Virtual Console 시작 준비
 ├── virtual-console-keyboard.js    콘솔 키보드 조작
@@ -138,7 +151,6 @@ tools/
 
 | 증상 / 사항 | 원인 · 해결 |
 |---|---|
-| 빌드 시 `is defined multiple times` | 바탕화면 iCloud 동기화가 build 폴더에 `파일 2.jar` 복사본을 만듦. **Build > Clean Project** 후 다시 빌드. 반복되면 프로젝트를 바탕화면 밖으로 옮기기 |
 | `Could not find ai.pleos.playground:Vehicle:2.3.1` | 2.3.1은 저장소에 없음. **2.3.2** 사용 |
 | SDK 호출에 빨간 줄 (`@RequiresPermission`) | Manifest에 권한 누락. 조향·브레이크·기어는 모두 `pleos.car.permission.CAR_DRIVE` |
 | Virtual Console 접속 안 됨 | 에뮬레이터 부팅 완료 확인 후 `./tools/start-console.sh` 다시 실행 |

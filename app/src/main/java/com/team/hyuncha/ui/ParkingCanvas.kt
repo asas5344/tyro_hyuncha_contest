@@ -190,6 +190,7 @@ internal class Scene(
     val replayTime: Double?,
     val pose: com.team.hyuncha.sim.CarPose,
     val wheelAngleDeg: Double,
+    val speedMps: Double,
     val direction: Direction,
     val braking: Boolean,
     val atEnd: Boolean,
@@ -209,6 +210,7 @@ internal fun sceneOf(sim: ParkingSimulator, rv: ReplayView?, direction: Directio
     return Scene(
         sim = sim, replay = rv, src = src, replayTime = rt, pose = pose,
         wheelAngleDeg = shown?.wheelAngleDeg ?: sim.wheelAngleDeg,
+        speedMps = shown?.speedMps ?: sim.speed,
         direction = shown?.direction ?: direction,
         braking = shown?.braking ?: braking,
         atEnd = atEnd,

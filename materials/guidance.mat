@@ -1,0 +1,13 @@
+material {
+    name : guidance,
+    shadingModel : unlit,
+    requires : [ color ],
+    doubleSided : true,
+    culling : none
+}
+fragment {
+    void material(inout MaterialInputs material) {
+        prepareMaterial(material);
+        material.baseColor = getColor();
+    }
+}

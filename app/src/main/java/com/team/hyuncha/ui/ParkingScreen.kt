@@ -106,6 +106,7 @@ enum class InputMode(val label: String) {
  * 주차 연습 화면: 탑뷰 전체 화면 + 아래쪽 작은 전진/후진 버튼.
  * 실제 차량(Virtual Console) 입력을 기본으로 쓰고, 오른쪽 조작 패널은 차량 연결이 없을 때(화면 조작 백업)만 보임.
  * @param vehicle Pleos SDK. null이면 화면 조작만 가능
+ *
  */
 @Composable
 fun ParkingScreen(
@@ -245,14 +246,14 @@ fun ParkingScreen(
                         else ReplayView(sim, replayClock.doubleValue, isModel = false, compare = model)
                     }
                 }
-                if (firstPerson) FirstPersonCanvas(
+                if (firstPerson) RealisticParkingView(
                     sim = sim,
                     frame = { frame.longValue },
                     direction = { input.direction },
                     braking = { input.brakePressed },
-                    camera = carCamera,
                     modifier = Modifier.fillMaxSize(),
                     replay = replayView,
+                    carCamera = carCamera,
                 ) else ParkingCanvas(
                     sim = sim,
                     frame = { frame.longValue },
@@ -435,7 +436,7 @@ private fun SimHud(
             }
             waitingForBrake -> NoticeCard(
                 "브레이크를 한 번 밟으면 시작해요.\n브레이크를 떼면 천천히 움직여요.",
-                Modifier.align(Alignment.BottomCenter),
+                Modifier.align(Alignment.BottomCenter).padding(bottom = 88.dp),
             )
         }
     }
