@@ -4,7 +4,6 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.*
@@ -37,6 +36,7 @@ fun HomeScreen(
     onRanking: () -> Unit = {},
     hardMode: Boolean = false, onHardModeChange: (Boolean) -> Unit = {},
     hardSituation: HardSituation? = null, onHardSituationChange: (HardSituation?) -> Unit = {},
+    darkTheme: Boolean = true,
 ) {
     val colors = MaterialTheme.colorScheme
     val scale = (LocalDensity.current.fontScale * LocalAppTextScale.current).coerceAtLeast(1f)
@@ -137,7 +137,7 @@ fun HomeScreen(
                         diagonal(Modifier.fillMaxWidth())
                     }
                     Spacer(Modifier.height(8.dp))
-                    HardModeChoice(hardMode, onHardModeChange, hardSituation, onHardSituationChange)
+                    HardModeChoice(hardMode, onHardModeChange, hardSituation, onHardSituationChange, darkTheme)
                     if (!hardMode) {
                         // 접혀도 펼쳐질 높이를 카드 아래에 남겨 주차 방식과 카드 상단을 고정한다.
                         Layout(
@@ -164,19 +164,28 @@ private val HardModeHorizontalPadding = 24.dp
 private fun HardModeChoice(
     on: Boolean, onChange: (Boolean) -> Unit,
     situation: HardSituation?, onSituationChange: (HardSituation?) -> Unit,
+    darkTheme: Boolean,
 ) {
     val c = MaterialTheme.colorScheme
     Surface(modifier = Modifier.fillMaxWidth().testTag("hard_mode")
         .toggleable(value = on, role = Role.Switch, onValueChange = onChange),
-        shape = RoundedCornerShape(24.dp), color = if (on) c.surfaceVariant else c.surface,
-        border = if (on) BorderStroke(2.dp, Color(0xFFFF6B6B)) else null) {
+        shape = RoundedCornerShape(18.dp), color = if (on) c.surfaceVariant else c.surface) {
         Column(Modifier.padding(horizontal = HardModeHorizontalPadding, vertical = 12.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("하드 모드", Modifier.weight(1f), style = MaterialTheme.typography.titleMedium,
-                    fontWeight = if (on) FontWeight.Bold else FontWeight.Normal, color = if (on) Color(0xFFFF6B6B) else c.onSurface)
+                    fontWeight = if (on) FontWeight.Bold else FontWeight.Normal, color = c.onSurface)
                 Text(if (on) "켜짐 · T자 주차" else "꺼짐", color = c.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
                 Spacer(Modifier.width(12.dp))
-                Switch(checked = on, onCheckedChange = null, modifier = Modifier.testTag("hard_mode_switch"))
+                Switch(
+                    checked = on, onCheckedChange = null, modifier = Modifier.testTag("hard_mode_switch"),
+                    colors = SwitchDefaults.colors(
+                        checkedTrackColor = if (darkTheme) Color(0xFF00E074) else Color(0xFF02C265),
+                        checkedThumbColor = Color.White,
+                        uncheckedTrackColor = if (darkTheme) Color(0xFF686A72) else Color(0xFFB8B8B9),
+                        uncheckedThumbColor = if (darkTheme) Color(0xFFA4A8AE) else Color.White,
+                        uncheckedBorderColor = c.outline,
+                    ),
+                )
             }
             Text("T자 주차 · 40초 · 8km/h · 클락션 3번 · 좁은 칸 · 랜덤 상황",
                 Modifier.padding(top = 6.dp), color = c.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
@@ -230,19 +239,15 @@ private fun EngineStartButton(onStart: () -> Unit, modifier: Modifier) {
     val pressed by interaction.collectIsPressedAsState()
     val factor by animateFloatAsState(if (pressed) .965f else 1f,
         spring(dampingRatio = 1f, stiffness = 700f), label = "engine_start_press")
-    Box(modifier.graphicsLayer { scaleX = factor; scaleY = factor }
-        .border(3.dp, c.outlineVariant, CircleShape).padding(10.dp)) {
+    Box(modifier.graphicsLayer { scaleX = factor; scaleY = factor }.padding(10.dp)) {
         Button(onClick = onStart, modifier = Modifier.fillMaxSize(), shape = CircleShape,
-            border = BorderStroke(2.dp, c.primary.copy(alpha = .7f)),
-            colors = ButtonDefaults.buttonColors(containerColor = c.surfaceVariant, contentColor = c.onSurface),
             interactionSource = interaction,
-            elevation = ButtonDefaults.buttonElevation(defaultElevation = 8.dp, pressedElevation = 2.dp),
             contentPadding = PaddingValues(24.dp)) {
             Column(horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                OutlineIcon("power", Modifier.size(56.dp), c.primary)
+                OutlineIcon("power", Modifier.size(56.dp), c.onPrimary)
                 Text("연습 시작", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
-                Text("START", color = c.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+                Text("START", color = c.onPrimary.copy(alpha = 0.85f), style = MaterialTheme.typography.bodySmall)
             }
         }
     }
@@ -252,10 +257,10 @@ private fun EngineStartButton(onStart: () -> Unit, modifier: Modifier) {
 private fun ParkingChoice(title: String, selected: Boolean, enabled: Boolean, onClick: () -> Unit, modifier: Modifier) {
     val c = MaterialTheme.colorScheme
     Surface(onClick = onClick, enabled = enabled, modifier = modifier.heightIn(min = controlHeight(88.dp)),
-        shape = RoundedCornerShape(24.dp),
+        shape = RoundedCornerShape(18.dp),
         color = if (selected) c.surfaceVariant else c.surface,
         contentColor = if (selected) c.onSurface else c.onSurfaceVariant,
-        border = if (selected) BorderStroke(2.dp, c.primary) else null) {
+        border = if (selected) BorderStroke(2.dp, c.outline) else null) {
         Row(Modifier.padding(horizontal = 24.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
             if (selected) {
                 OutlineIcon("check", Modifier.size(28.dp)); Spacer(Modifier.width(16.dp))

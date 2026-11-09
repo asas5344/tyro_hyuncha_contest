@@ -19,7 +19,16 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import com.team.hyuncha.ui.theme.CameraControl
+import com.team.hyuncha.ui.theme.CameraControlSelected
+import com.team.hyuncha.ui.theme.CameraControlSelectedText
 import com.team.hyuncha.ui.theme.LocalAppTextScale
+
+@Composable
+internal fun cameraButtonColors(selected: Boolean = false) = ButtonDefaults.buttonColors(
+    containerColor = if (selected) CameraControlSelected else CameraControl,
+    contentColor = if (selected) CameraControlSelectedText else Color.White,
+)
 
 /** 글자 확대 시 터치 영역도 커진다. 화면 전체의 density는 변경하지 않는다. */
 @Composable

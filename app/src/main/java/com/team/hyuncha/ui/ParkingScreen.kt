@@ -3,6 +3,7 @@ package com.team.hyuncha.ui
 import ai.pleos.playground.vehicle.Vehicle
 import android.util.Log
 import ai.pleos.playground.vehicle.constant.control.VehicleGear
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.focusable
@@ -27,6 +28,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -64,6 +66,8 @@ import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -103,6 +107,12 @@ import com.team.hyuncha.sim.SimStatus
 import java.util.Locale
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import com.team.hyuncha.ui.theme.CameraControl
+import com.team.hyuncha.ui.theme.CameraControlOutline
+import com.team.hyuncha.ui.theme.CameraControlSelected
+import com.team.hyuncha.ui.theme.CameraControlSelectedText
+import com.team.hyuncha.ui.theme.CameraOverlay
+import com.team.hyuncha.ui.theme.CameraSecondaryText
 import com.team.hyuncha.ui.theme.LocalAppTextScale
 
 /** 입력 방식: 화면 조작(개발·백업용) / 실제 차량(Pleos SDK) */
@@ -384,7 +394,9 @@ fun ParkingScreen(
                     ) {
                         OutlinedButton(
                             onClick = { firstPerson = !firstPerson },
-                            colors = ButtonDefaults.outlinedButtonColors(containerColor = Color.Black.copy(alpha = 0.55f)),
+                            colors = ButtonDefaults.outlinedButtonColors(containerColor = CameraControl),
+                            border = BorderStroke(1.dp, CameraControlOutline),
+                            shape = RoundedCornerShape(12.dp),
                             modifier = Modifier.height(64.dp).testTag("toggle_view"),
                         ) {
                             Text(if (firstPerson) "탑뷰로 보기" else "운전석으로 보기", color = Color.White, fontSize = 22.sp * LocalAppTextScale.current)
@@ -480,7 +492,7 @@ private fun SimHud(
     if (replaying) return
     Box(modifier.padding(16.dp)) {
         Surface(
-            color = Color.Black.copy(alpha = 0.55f),
+            color = CameraOverlay,
             shape = RoundedCornerShape(12.dp),
             modifier = Modifier.align(Alignment.TopStart),
         ) {
@@ -495,7 +507,7 @@ private fun SimHud(
         }
 
         when {
-            lock.message != null -> NoticeCard(lock.message, Modifier.align(Alignment.Center))
+            lock.message != null -> NoticeCard(lock.message, Modifier.align(Alignment.Center), locked = true)
             sim.status == SimStatus.TIMEOUT -> ResultCard(
                 title = "시간 초과",
                 lines = listOf("제한시간 ${sim.map.rules.timeLimitSec?.toInt() ?: 0}초가 지났어요"),
@@ -553,16 +565,22 @@ private fun HornFlashIfOn(frame: () -> Long, startedAt: Long, modifier: Modifier
 private fun VoiceButton(voice: VoiceInput, modifier: Modifier) {
     val listening = voice.state == VoiceInput.State.LISTENING
     val usable = voice.state == VoiceInput.State.READY || listening
+    val color = when {
+        listening -> CameraControlSelectedText
+        usable -> Color.White
+        else -> CameraSecondaryText
+    }
     OutlinedButton(
         onClick = { voice.toggle() },
         enabled = usable,
         colors = ButtonDefaults.outlinedButtonColors(
-            containerColor = if (listening) MaterialTheme.colorScheme.primary else Color.Black.copy(alpha = 0.55f),
-            disabledContainerColor = Color.Black.copy(alpha = 0.35f),
+            containerColor = if (listening) CameraControlSelected else CameraControl,
+            disabledContainerColor = CameraOverlay,
         ),
+        border = BorderStroke(1.dp, CameraControlOutline),
+        shape = RoundedCornerShape(12.dp),
         modifier = modifier.testTag("voice_button"),
     ) {
-        val color = if (usable) Color.White else Color.White.copy(alpha = 0.4f)
         OutlineIcon("mic", Modifier.size(28.dp), color)
         Spacer(Modifier.width(8.dp))
         Text(
@@ -583,11 +601,11 @@ private fun VoiceBubble(voice: VoiceInput, message: String?, modifier: Modifier)
     val listening = voice.state == VoiceInput.State.LISTENING
     if (!listening && message == null) return
     val textSize = 22.sp * LocalAppTextScale.current
-    Surface(color = Color.Black.copy(alpha = 0.75f), shape = RoundedCornerShape(20.dp), modifier = modifier.testTag("voice_bubble")) {
+    Surface(color = CameraOverlay, shape = RoundedCornerShape(20.dp), modifier = modifier.testTag("voice_bubble")) {
         Column(Modifier.padding(horizontal = 24.dp, vertical = 14.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             if (listening) {
                 Text(if (voice.heard.isBlank()) "듣고 있어요…" else "\"${voice.heard}\"", color = Color.White, fontSize = textSize, fontWeight = FontWeight.Bold)
-                Text("예: " + VoiceCommands.examples.joinToString(" · ") { "\"$it\"" }, color = Color.White.copy(alpha = 0.7f), fontSize = textSize * 0.75f)
+                Text("예: " + VoiceCommands.examples.joinToString(" · ") { "\"$it\"" }, color = CameraSecondaryText, fontSize = textSize * 0.75f)
             } else if (message != null) {
                 Text(message, color = Color(0xFF8EE6B1), fontSize = textSize, fontWeight = FontWeight.Bold)
             }
@@ -604,7 +622,7 @@ private fun DirectionBar(
     modifier: Modifier,
 ) {
     Surface(
-        color = Color.Black.copy(alpha = 0.55f),
+        color = CameraOverlay,
         shape = RoundedCornerShape(20.dp),
         modifier = modifier,
     ) {
@@ -614,17 +632,22 @@ private fun DirectionBar(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Direction.entries.forEach { d ->
-                val selected = direction == d
+                val isSelected = direction == d
                 Button(
                     onClick = { onDirectionChange(d) },
-                    colors = if (selected) ButtonDefaults.buttonColors()
-                    else ButtonDefaults.buttonColors(containerColor = Color.White.copy(alpha = 0.12f), contentColor = Color.White),
-                    modifier = Modifier.height(64.dp),
+                    colors = cameraButtonColors(isSelected),
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.height(64.dp).semantics { selected = isSelected },
                 ) {
                     Text(if (d == Direction.FORWARD) "전진 (D)" else "후진 (R)", fontSize = 22.sp * LocalAppTextScale.current)
                 }
             }
-            OutlinedButton(onClick = onRestart, modifier = Modifier.height(64.dp)) {
+            OutlinedButton(
+                onClick = onRestart,
+                modifier = Modifier.height(64.dp),
+                shape = RoundedCornerShape(12.dp),
+                border = BorderStroke(1.dp, CameraControlOutline),
+            ) {
                 Text("다시", color = Color.White, fontSize = 22.sp * LocalAppTextScale.current)
             }
         }
@@ -660,8 +683,12 @@ private fun HudText(text: String, bold: Boolean = false) {
 }
 
 @Composable
-private fun NoticeCard(text: String, modifier: Modifier) {
-    Card(modifier) {
+private fun NoticeCard(text: String, modifier: Modifier, locked: Boolean = false) {
+    val colors = MaterialTheme.colorScheme
+    Card(modifier, colors = CardDefaults.cardColors(
+        containerColor = if (locked) colors.errorContainer else colors.surfaceContainerHigh,
+        contentColor = if (locked) colors.onErrorContainer else colors.onSurface,
+    )) {
         Text(
             text,
             Modifier.padding(horizontal = 24.dp, vertical = 16.dp),
@@ -689,7 +716,10 @@ private fun ResultCard(
             Modifier.padding(28.dp).verticalScroll(rememberScrollState()),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            Text(title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+            Text(
+                title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold,
+                color = if (score == null) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface,
+            )
             Spacer(Modifier.height(12.dp))
             lines.forEach { Text(it, textAlign = TextAlign.Center) }
             if (score != null) {
@@ -761,7 +791,7 @@ private fun ReplayBar(
     }
     val textSize = 20.sp * LocalAppTextScale.current
 
-    Surface(color = Color.Black.copy(alpha = 0.7f), shape = RoundedCornerShape(20.dp), modifier = modifier.widthIn(max = 900.dp)) {
+    Surface(color = CameraOverlay, shape = RoundedCornerShape(20.dp), modifier = modifier.widthIn(max = 900.dp)) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(
                 caption,
@@ -776,7 +806,7 @@ private fun ReplayBar(
             if (plan != null) {
                 Text(
                     "모범 주행은 표준 방법으로 깔끔하게 넣은 예시 하나예요. 유일한 최적 경로는 아니고, 다른 방법으로도 주차할 수 있어요.",
-                    color = Color.White.copy(alpha = 0.7f),
+                    color = CameraSecondaryText,
                     fontSize = textSize * 0.75f,
                 )
             }
@@ -907,12 +937,13 @@ private fun ControlPanel(
 @Composable
 private fun BrakeHoldButton(input: TouchInput) {
     val going = !input.brakePressed
+    val colors = MaterialTheme.colorScheme
     Box(
         Modifier
             .fillMaxWidth()
             .height(96.dp)
             .background(
-                if (going) Color(0xFF2E7D32) else Color(0xFFC62828),
+                if (going) colors.primaryContainer else colors.primary,
                 RoundedCornerShape(16.dp),
             )
             .pointerInput(Unit) {
@@ -926,7 +957,7 @@ private fun BrakeHoldButton(input: TouchInput) {
     ) {
         Text(
             if (going) "진행 중 (손 떼면 정지)" else "누르는 동안 브레이크 떼기",
-            color = Color.White,
+            color = if (going) colors.onPrimaryContainer else colors.onPrimary,
             fontWeight = FontWeight.Bold,
         )
     }

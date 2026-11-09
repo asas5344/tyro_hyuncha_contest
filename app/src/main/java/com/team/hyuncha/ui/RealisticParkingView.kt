@@ -4,6 +4,7 @@ import android.view.TextureView
 import android.util.Log
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.background
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -11,6 +12,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.Lifecycle
@@ -19,6 +22,8 @@ import com.team.hyuncha.input.*
 import com.team.hyuncha.data.CarCamera
 import com.team.hyuncha.render3d.*
 import com.team.hyuncha.sim.ParkingSimulator
+import com.team.hyuncha.ui.theme.CameraOverlay
+import com.team.hyuncha.ui.theme.CameraSecondaryText
 
 /** TextureView participates in Compose z-order, so HUDs, dialogs and controls remain on top. */
 @Composable
@@ -45,7 +50,7 @@ fun RealisticParkingView(
             renderer?.close();renderer=null
         }
     }
-    BoxWithConstraints(modifier.background(Color(0xFF151A22))) {
+    BoxWithConstraints(modifier.background(CameraOverlay.copy(alpha = 1f))) {
         key(sim) {
             AndroidView(
                 modifier=Modifier.fillMaxSize(),
@@ -73,10 +78,14 @@ fun RealisticParkingView(
         if(error!=null) Surface(Modifier.align(Alignment.Center).padding(24.dp)) {
             Text("3D 화면을 열 수 없어요. 탑뷰로 전환한 뒤 다시 시도해 주세요.",Modifier.padding(20.dp))
         }
-        Surface(Modifier.align(Alignment.TopEnd).padding(16.dp),color=Color.Black.copy(alpha=.6f)) {
+        Surface(
+            Modifier.align(Alignment.TopEnd).padding(16.dp),
+            color = CameraOverlay,
+            shape = RoundedCornerShape(12.dp),
+        ) {
             Column(Modifier.padding(10.dp)) {
                 Text("3D · ${sim.car.name}",color=Color.White)
-                Text(if(ready) "3D 화면 표시 중" else "3D 화면 준비 중",color=Color.LightGray)
+                Text(if(ready) "3D 화면 표시 중" else "3D 화면 준비 중",color=CameraSecondaryText)
             }
         }
         RearCameraControl(
@@ -86,7 +95,13 @@ fun RealisticParkingView(
         )
         Row(Modifier.align(Alignment.BottomCenter).padding(bottom=24.dp),horizontalArrangement=Arrangement.spacedBy(8.dp)) {
             listOf(LookSide.LEFT to "왼쪽",LookSide.FRONT to "정면",LookSide.RIGHT to "오른쪽").forEach { (side,label) ->
-                Button(onClick={LookButtons.select(side)},modifier=Modifier.testTag("look_${side.name.lowercase()}")) { Text(label) }
+                val isSelected = LookButtons.side == side
+                Button(
+                    onClick = { LookButtons.select(side) },
+                    modifier = Modifier.testTag("look_${side.name.lowercase()}").semantics { selected = isSelected },
+                    colors = cameraButtonColors(isSelected),
+                    shape = RoundedCornerShape(12.dp),
+                ) { Text(label) }
             }
         }
     }
@@ -99,7 +114,12 @@ private fun RenderSync(renderer: ParkingRenderer?,state: () -> RenderState) {
 
 @Composable
 private fun RearCameraControl(reverse: () -> Boolean,expanded: Boolean,onToggle: () -> Unit,modifier: Modifier) {
-    if(reverse()) Button(onClick=onToggle,modifier=modifier.testTag("expand_rear_camera")) {
+    if(reverse()) Button(
+        onClick = onToggle,
+        modifier = modifier.testTag("expand_rear_camera"),
+        colors = cameraButtonColors(expanded),
+        shape = RoundedCornerShape(12.dp),
+    ) {
         Text(if(expanded) "운전석 복귀" else "후방 화면 확대")
     }
 }
