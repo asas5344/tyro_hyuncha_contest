@@ -50,7 +50,7 @@ fun HardModeBar(sim: ParkingSimulator, frame: () -> Long, modifier: Modifier = M
                 Text("하드 모드 · ${s.label}", color = Color.White, fontSize = 16.sp * scale, fontWeight = FontWeight.Bold)
                 if (!started) {
                     Text(s.description, color = CameraSecondaryText, fontSize = 15.sp * scale)
-                    Text("움직이기 시작하면 ${rules.timeLimitSec?.toInt()}초가 흘러요 · 속도 8km/h · 클락션 주의",
+                    Text("움직이기 시작하면 ${rules.timeLimitSec?.toInt()}초가 흘러요 · 속도 8km/h · 클랙슨 주의",
                         color = CameraSecondaryText, fontSize = 13.sp * scale)
                 }
             }

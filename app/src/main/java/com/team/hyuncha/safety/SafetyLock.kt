@@ -10,7 +10,7 @@ import ai.pleos.playground.vehicle.constant.control.VehicleGear
 enum class LockState(val message: String?) {
     OK(null),
     CHECKING("기어 상태를 확인하고 있어요"),
-    NOT_PARK("P단에서만 연습할 수 있어요.\n기어를 P로 바꿔주세요."),
+    NOT_PARK("P단에서만 연습할 수 있어요.\n기어를 P로 바꿔 주세요."),
 }
 
 object SafetyLock {

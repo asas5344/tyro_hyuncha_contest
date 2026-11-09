@@ -56,7 +56,7 @@ fun SettingsScreen(textSize: AppTextSize, dark: Boolean,
         Surface(shape = RoundedCornerShape(24.dp), color = c.surface, contentColor = c.onSurface) {
             Column(Modifier.fillMaxWidth().padding(28.dp)) {
                 Text("이 크기로 보여요", style = MaterialTheme.typography.titleLarge)
-                Text("주차 연습을 시작해볼까요?", Modifier.padding(top = 12.dp), style = MaterialTheme.typography.bodyLarge)
+                Text("주차 연습을 시작해 볼까요?", Modifier.padding(top = 12.dp), style = MaterialTheme.typography.bodyLarge)
             }
         }
         Text("화면 테마", style = MaterialTheme.typography.headlineMedium)

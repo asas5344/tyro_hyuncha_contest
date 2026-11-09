@@ -75,7 +75,9 @@ class VoiceRecognitionTest {
             "voice_gear_p.pcm" to VoiceCommand.PARK_INFO,      // "P로 바꿔줘"
             "voice_toggle.pcm" to VoiceCommand.TOGGLE_DIRECTION, // "방향 바꿔 줘"
         )
-        val results = cases.map { (asset, expected) -> Triple(asset, expected, recognize(asset)) }
+        // 에뮬레이터의 음성 엔진이 가끔(10개 중 1개꼴) 15초 동안 아무 결과도 안 줄 때가 있어서, 빈 결과면 한 번만 다시 들려줌.
+        // 엔진이 알아들은 글자를 잘못 해석하는 경우는 다시 하지 않으므로 명령 해석 오류는 그대로 잡힘
+        val results = cases.map { (asset, expected) -> Triple(asset, expected, recognize(asset).ifEmpty { recognize(asset) }) }
         results.forEach { (asset, expected, text) ->
             assertEquals("$asset 인식 결과 \"$text\"", expected, VoiceCommands.parse(text))
         }

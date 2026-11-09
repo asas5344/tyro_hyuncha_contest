@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 앱을 켤 때 시작 화면: 로고 배경색 위에 앱 아이콘(tyro 마크) -->
+    <style name="Theme.Hyuncha" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowSplashScreenBackground">@color/tyro_background</item>
+        <item name="android:windowSplashScreenIconBackgroundColor">@color/tyro_background</item>
+    </style>
+</resources>

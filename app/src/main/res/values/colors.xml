@@ -7,4 +7,6 @@
     <color name="teal_700">#FF018786</color>
     <color name="black">#FF000000</color>
     <color name="white">#FFFFFFFF</color>
+    <!-- tyro 로고 배경색 (앱 아이콘·시작 화면) -->
+    <color name="tyro_background">#FF1C1F26</color>
 </resources>
