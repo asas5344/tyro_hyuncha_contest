@@ -176,6 +176,8 @@ object ParkingMaps {
 
     // 오른쪽 옆 차가 침범하면 그랜저·싼타페가 표준 경로로 진입할 수 없다.
     val ENCROACH_SIDES = listOf(-1)
+    // 왼쪽 이웃이 없는 첫 칸은 침범 상황의 목표에서 제외한다.
+    internal val ENCROACH_TARGET_RANGE = 1..HARD_TARGET_RANGE.last
     // 이중주차 차 위치 (목표 칸에서 몇 칸): 오른쪽 1.5~2칸은 후진을 시작할 자리를 막아서 뺌
     val DOUBLE_PARK_OFFSETS = listOf(-2.5, -2.0, -1.5, 2.5, 3.0)
 
@@ -185,7 +187,8 @@ object ParkingMaps {
      */
     fun randomHard(random: Random = Random.Default, situation: HardSituation? = null): ParkingMap {
         val pick = situation ?: HardSituation.entries.random(random)
-        val target = HARD_TARGET_RANGE.random(random)
+        val targetRange = if (pick == HardSituation.ENCROACH) ENCROACH_TARGET_RANGE else HARD_TARGET_RANGE
+        val target = targetRange.random(random)
         val side = when (pick) {
             HardSituation.PILLAR -> pillarSides(target).random(random)
             HardSituation.ENCROACH -> ENCROACH_SIDES.random(random)
@@ -234,7 +237,9 @@ object ParkingMaps {
             )
             // 옆 칸 차를 내 칸 쪽으로 밀고, 통로 쪽 끝이 내 칸으로 기울게 돌림
             HardSituation.ENCROACH -> {
-                val neighborX = slot.center.x + side * HARD_SLOT_W
+                val neighbor = targetIndex + side
+                require(side in listOf(-1, 1) && neighbor in base.bays.indices)
+                val neighborX = base.bays[neighbor].center.x
                 val cars = base.parkedCars.map { r ->
                     if (kotlin.math.abs(r.center.x - neighborX) > 0.01) r
                     else r.copy(center = Vec2(r.center.x - side * ENCROACH_SHIFT_M, r.center.y),

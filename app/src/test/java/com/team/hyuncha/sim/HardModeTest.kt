@@ -89,12 +89,24 @@ class HardModeTest {
         assertTrue("기둥이 여러 칸 사이에 배치됨", gaps.size > 1)
     }
 
+    @Test fun 옆_차_침범을_고르면_매번_한_대가_목표_칸을_침범한다() {
+        repeat(200) { seed ->
+            val map = ParkingMaps.randomHard(Random(seed), HardSituation.ENCROACH)
+            val intruders = map.parkedCars.count { car -> car.corners().any(map.slot::contains) }
+            assertEquals("seed=$seed", 1, intruders)
+        }
+    }
+
     /** 가장 중요: 나올 수 있는 모든 조합을 모든 차종이 표준 방법으로 제한시간 안에 넣을 수 있어야 함 */
     @Test fun 나올_수_있는_모든_조합을_모든_차종이_주차할_수_있다() {
         val failures = mutableListOf<String>()
         for (target in ParkingMaps.HARD_TARGET_RANGE) for (car in CarPresets.all) {
-            val combos = ParkingMaps.pillarSides(target).map { HardSituation.PILLAR to it } +
-                ParkingMaps.ENCROACH_SIDES.map { HardSituation.ENCROACH to it }
+            val combos = buildList {
+                ParkingMaps.pillarSides(target).forEach { add(HardSituation.PILLAR to it) }
+                if (target in ParkingMaps.ENCROACH_TARGET_RANGE) {
+                    ParkingMaps.ENCROACH_SIDES.forEach { add(HardSituation.ENCROACH to it) }
+                }
+            }
             for ((s, side) in combos) {
                 val plan = Coach.solve(car, ParkingMaps.hard(target, s, side))
                 if (plan == null || plan.run.clockSec > 40) failures += "$s side=$side t$target ${car.name}"
