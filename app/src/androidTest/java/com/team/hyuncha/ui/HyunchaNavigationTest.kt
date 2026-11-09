@@ -43,6 +43,24 @@ class HyunchaNavigationTest {
     }
     private fun openApp() { compose.setContent { HyunchaApp(vehicle = null, preferences = store) }; settle() }
 
+    @Test fun hardModeAndSituationPickerFitOnHomeWithoutScrolling() {
+        store.textSize = AppTextSize.EXTRA_LARGE
+        openApp()
+        val home = compose.onNodeWithTag("home_screen").getUnclippedBoundsInRoot()
+        fun assertWithinHome(tag: String) {
+            val node = compose.onNodeWithTag(tag).assertIsDisplayed().getUnclippedBoundsInRoot()
+            assertTrue("$tag should fit on home: $node inside $home",
+                node.top >= home.top && node.bottom <= home.bottom &&
+                    node.left >= home.left && node.right <= home.right)
+        }
+        assertWithinHome("hard_mode")
+        compose.onNodeWithTag("hard_mode").performClick(); settle()
+        assertWithinHome("hard_mode")
+        listOf("RANDOM", "PILLAR", "ENCROACH", "DOUBLE_PARKED").forEach { assertWithinHome("hard_pick_$it") }
+        assertWithinHome("start_practice")
+        capture("home_screen", "home-hard-mode.png")
+    }
+
     @Test fun rankingShowsRecordsByModeInScoreOrder() {
         val recordsName = "driving_mate_ranking_instrumented_test"
         context.getSharedPreferences(recordsName, Context.MODE_PRIVATE).edit().clear().commit()

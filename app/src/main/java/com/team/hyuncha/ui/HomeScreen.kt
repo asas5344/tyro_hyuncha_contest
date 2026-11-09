@@ -39,7 +39,6 @@ fun HomeScreen(
     val scale = (LocalDensity.current.fontScale * LocalAppTextScale.current).coerceAtLeast(1f)
     BoxWithConstraints(Modifier.fillMaxSize().testTag("home_screen")) {
         val wide = maxWidth >= 1100.dp
-        val viewportHeight = maxHeight
         Row(Modifier.fillMaxSize()) {
             if (wide) {
                 Column(Modifier.width(if (scale > 1.2f) 300.dp else 264.dp).fillMaxHeight()
@@ -65,20 +64,11 @@ fun HomeScreen(
             }
             BoxWithConstraints(Modifier.weight(1f).fillMaxHeight()) {
                 val compactHeader = maxWidth < 850.dp
-                val headerHeight = when {
-                    compactHeader -> 360.dp * scale
-                    scale > 1.2f -> 260.dp
-                    else -> 210.dp
-                }
-                val diameter = controlHeight(300.dp)
-                // 화면 첫 진입 시 원형 버튼 중심을 본문 영역의 세로 중앙에 맞춘다.
-                // 큰 글자/낮은 창에서는 아래 주차 방식과 안내를 스크롤할 수 있다.
-                val startAreaHeight = maxOf(diameter + 48.dp, viewportHeight - 64.dp - headerHeight * 2)
+                val diameter = controlHeight(if (maxHeight < 850.dp) 200.dp else 260.dp)
                 Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())
-                    .padding(if (wide) 44.dp else 24.dp, 32.dp)) {
-                    Box(Modifier.fillMaxWidth().height(headerHeight)) {
-                        Column(Modifier.align(Alignment.TopStart)
-                            .fillMaxWidth(if (compactHeader) 1f else .55f)) {
+                    .padding(if (wide) 44.dp else 24.dp, 24.dp)) {
+                    val heading: @Composable (Modifier) -> Unit = { modifier ->
+                        Column(modifier) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Text("주차 연습", Modifier.weight(1f), style = MaterialTheme.typography.headlineLarge)
                                 if (!wide) {
@@ -90,10 +80,22 @@ fun HomeScreen(
                             Text("내 차로, 천천히 익혀요.", Modifier.padding(top = 8.dp),
                                 color = colors.onSurfaceVariant, style = MaterialTheme.typography.bodyLarge)
                         }
-                        SelectedCar(car, onChooseCar, Modifier.align(if (compactHeader) Alignment.BottomEnd else Alignment.TopEnd)
-                            .width(if (scale > 1.2f) 460.dp else 420.dp))
                     }
-                    Box(Modifier.fillMaxWidth().height(startAreaHeight), contentAlignment = Alignment.Center) {
+                    val carWidth = if (scale > 1.2f) 460.dp else 420.dp
+                    if (compactHeader) {
+                        Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                            heading(Modifier.fillMaxWidth())
+                            SelectedCar(car, onChooseCar, Modifier.width(carWidth))
+                        }
+                    } else {
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(24.dp)) {
+                            heading(Modifier.weight(1f))
+                            SelectedCar(car, onChooseCar, Modifier.width(carWidth))
+                        }
+                    }
+                    Spacer(Modifier.height(16.dp))
+                    HardModeChoice(hardMode, onHardModeChange, hardSituation, onHardSituationChange)
+                    Box(Modifier.fillMaxWidth().height(diameter + 28.dp), contentAlignment = Alignment.Center) {
                         EngineStartButton(onStart, Modifier.size(diameter).testTag("start_practice"))
                     }
                     Text("연습할 주차 방식", style = MaterialTheme.typography.titleMedium)
@@ -111,7 +113,7 @@ fun HomeScreen(
                         ParkingChoice(ParkingMode.DIAGONAL.label, mode == ParkingMode.DIAGONAL, true,
                             { onModeChange(ParkingMode.DIAGONAL) }, m.testTag("mode_DIAGONAL"))
                     }
-                    if (wide && scale <= 1.25f) {
+                    if (!compactHeader) {
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                             perpendicular(Modifier.weight(1f))
                             parallel(Modifier.weight(1f))
@@ -124,8 +126,6 @@ fun HomeScreen(
                         Spacer(Modifier.height(12.dp))
                         diagonal(Modifier.fillMaxWidth())
                     }
-                    Spacer(Modifier.height(12.dp))
-                    HardModeChoice(hardMode, onHardModeChange, hardSituation, onHardSituationChange)
                     Text("P단을 유지하고, 전진·후진은 앱에서 선택하세요.", Modifier.padding(top = 18.dp),
                         color = colors.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
                     Spacer(Modifier.height(12.dp))
@@ -148,7 +148,7 @@ private fun HardModeChoice(
     Surface(onClick = { onChange(!on) }, modifier = Modifier.fillMaxWidth().testTag("hard_mode"),
         shape = RoundedCornerShape(24.dp), color = if (on) c.surfaceVariant else c.surface,
         border = if (on) BorderStroke(2.dp, Color(0xFFFF6B6B)) else null) {
-        Column(Modifier.padding(24.dp)) {
+        Column(Modifier.padding(horizontal = 24.dp, vertical = 16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("하드 모드", Modifier.weight(1f), style = MaterialTheme.typography.titleMedium,
                     fontWeight = if (on) FontWeight.Bold else FontWeight.Normal, color = if (on) Color(0xFFFF6B6B) else c.onSurface)
@@ -163,10 +163,11 @@ private fun HardModeChoice(
 
 /** 확인용: 하드 모드 상황 직접 고르기 (나중에 뺄 예정) */
 @Composable
+@OptIn(ExperimentalLayoutApi::class)
 private fun HardSituationPicker(situation: HardSituation?, onChange: (HardSituation?) -> Unit) {
     Column(Modifier.padding(top = 12.dp)) {
         Text("상황 고르기 (확인용)", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
-        Row(Modifier.padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        FlowRow(Modifier.padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             (listOf<HardSituation?>(null) + HardSituation.entries).forEach { s ->
                 FilterChip(
                     selected = situation == s,
