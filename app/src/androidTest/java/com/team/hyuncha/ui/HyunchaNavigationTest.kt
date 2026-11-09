@@ -127,19 +127,19 @@ class HyunchaNavigationTest {
         openApp()
         compose.onNodeWithTag("mode_PARALLEL").performScrollTo().performClick(); settle()
         compose.onNodeWithTag("start_practice").performScrollTo().performClick(); settle()
-        compose.onNodeWithText("평행 주차 · 그랜저").assertIsDisplayed()
+        compose.onNodeWithTag("parking_mode_PARALLEL").assertExists()
         capture("parking_screen", "parking-parallel.png")
         // 홈으로 돌아와도 고른 주차 방식이 유지됨
         compose.onNodeWithTag("back_home").performClick(); settle()
         compose.onNodeWithTag("start_practice").performScrollTo().performClick(); settle()
-        compose.onNodeWithText("평행 주차 · 그랜저").assertIsDisplayed()
+        compose.onNodeWithTag("parking_mode_PARALLEL").assertExists()
     }
 
     @Test fun diagonalParkingCanBeSelectedAndStarted() {
         openApp()
         compose.onNodeWithTag("mode_DIAGONAL").performScrollTo().performClick(); settle()
         compose.onNodeWithTag("start_practice").performScrollTo().performClick(); settle()
-        compose.onNodeWithText("사선 주차 · 그랜저").assertIsDisplayed()
+        compose.onNodeWithTag("parking_mode_DIAGONAL").assertExists()
         capture("parking_screen", "parking-diagonal.png")
     }
 

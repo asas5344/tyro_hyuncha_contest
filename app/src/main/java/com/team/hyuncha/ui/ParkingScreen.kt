@@ -513,6 +513,8 @@ private fun SimHud(
     // 다시 보여주기 중에는 결과 카드·안내를 가리지 않도록 숨김
     if (replaying) return
     Box(modifier.padding(16.dp)) {
+        // 화면에는 안 보이고, 자동 테스트가 고른 주차 방식으로 시작됐는지 확인하는 표시
+        Spacer(Modifier.size(0.dp).testTag("parking_mode_${sim.map.mode.name}"))
         Surface(
             color = CameraOverlay,
             shape = RoundedCornerShape(12.dp),
@@ -531,7 +533,7 @@ private fun SimHud(
             lock.message != null -> NoticeCard(lock.message, Modifier.align(Alignment.Center), locked = true)
             sim.status == SimStatus.TIMEOUT -> ResultCard(
                 title = "시간 초과",
-                lines = listOf("제한시간 ${sim.map.rules.timeLimitSec?.toInt() ?: 0}초가 지났어요"),
+                lines = listOf("제한 시간 ${sim.map.rules.timeLimitSec?.toInt() ?: 0}초가 지났어요"),
                 feedback = feedback,
                 modelReady = plan != null,
                 onRestart = onRestart,

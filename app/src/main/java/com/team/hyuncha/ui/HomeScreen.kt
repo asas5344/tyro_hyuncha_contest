@@ -1,5 +1,9 @@
 package com.team.hyuncha.ui
 
+import com.team.hyuncha.R
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.foundation.Image
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.BorderStroke
@@ -47,8 +51,7 @@ fun HomeScreen(
                 Column(Modifier.width(if (scale > 1.2f) 300.dp else 264.dp).fillMaxHeight()
                     .background(colors.surface).verticalScroll(rememberScrollState()).padding(20.dp, 36.dp),
                     verticalArrangement = Arrangement.spacedBy(18.dp)) {
-                    Text("Driving\nMate", Modifier.padding(16.dp, 4.dp),
-                        style = MaterialTheme.typography.headlineSmall)
+                    AppLogo(colors.onSurface, Modifier.padding(16.dp, 4.dp))
                     Spacer(Modifier.height(24.dp))
                     Surface(shape = RoundedCornerShape(22.dp), color = colors.surfaceVariant) {
                         Row(Modifier.fillMaxWidth().heightIn(min = controlHeight(100.dp)).padding(18.dp),
@@ -197,7 +200,7 @@ private fun HardModeChoice(
                     ),
                 )
             }
-            Text("T자 주차 · 40초 · 8km/h · 클락션 3번 · 좁은 칸 · 랜덤 상황",
+            Text("T자 주차 · 40초 · 8km/h · 클랙슨 3번 · 좁은 칸 · 랜덤 상황",
                 Modifier.padding(top = 6.dp), color = c.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
             if (on) HardSituationPicker(situation, onSituationChange, buttonGrowth)
         }
@@ -289,5 +292,18 @@ private fun ParkingChoice(title: String, selected: Boolean, enabled: Boolean, on
                     color = c.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
             }
         }
+    }
+}
+
+/**
+ * 앱 로고: 주차 칸으로 들어가는 차 마크 + "tyro" 글자 (로고 그림에서 떼어 낸 것).
+ * 그림은 흰색 + 투명도라 테마 글자색으로 칠해서 밝은·어두운 테마 모두에서 보이게 함
+ */
+@Composable
+private fun AppLogo(color: Color, modifier: Modifier = Modifier) {
+    Row(modifier.testTag("app_logo"), verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        Image(painterResource(R.drawable.tyro_mark), null, Modifier.size(64.dp), colorFilter = ColorFilter.tint(color))
+        Image(painterResource(R.drawable.tyro_wordmark), "tyro", Modifier.height(42.dp), colorFilter = ColorFilter.tint(color))
     }
 }
