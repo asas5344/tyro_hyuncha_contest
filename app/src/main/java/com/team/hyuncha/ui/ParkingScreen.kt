@@ -89,7 +89,6 @@ import com.team.hyuncha.input.LookSide
 import com.team.hyuncha.input.VoiceCommand
 import com.team.hyuncha.input.VoiceCommands
 import com.team.hyuncha.input.VoiceInput
-import com.team.hyuncha.input.VoiceKey
 import androidx.compose.ui.platform.LocalContext
 import kotlinx.coroutines.delay
 import com.team.hyuncha.safety.LockState
@@ -297,9 +296,7 @@ fun ParkingScreen(
     }
     DisposableEffect(voice) {
         voice.onCommand = { cmd, said -> onVoice(cmd, said) }
-        VoiceKey.onPress = { voice.toggle() }     // 핸들의 음성 버튼으로도 시작
         onDispose {
-            VoiceKey.onPress = null
             voice.release()
         }
     }
