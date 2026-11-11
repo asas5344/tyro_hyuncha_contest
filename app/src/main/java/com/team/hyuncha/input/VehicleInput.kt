@@ -23,6 +23,18 @@ enum class SteeringUnit(val label: String) {
 }
 
 /**
+ * 실제 브레이크 페달 상태로 "가상 차를 세워 둘지"를 정하는 규칙. SDK 없이 테스트할 수 있게 따로 둠.
+ * @param pedal SDK가 준 페달 상태. true = 밟음, false = 뗌, null = 아직 모름
+ */
+internal object BrakeGate {
+    /** 세워 둘지: 아직 준비(브레이크를 한 번 밟음)가 안 됐거나, 페달이 "뗌"으로 확인되지 않았으면 정지 */
+    fun holding(armed: Boolean, pedal: Boolean?): Boolean = !armed || pedal != false
+
+    /** 준비 상태: 브레이크를 한 번이라도 밟으면 준비됨. 그 뒤로는 유지 */
+    fun armedAfter(armed: Boolean, pedal: Boolean?): Boolean = armed || pedal == true
+}
+
+/**
  * 실제 차량(또는 Pleos 에뮬레이터)의 조향각·브레이크·기어를 받는 입력.
  * DrivingInput은 핸들 각도(오른쪽 양수)를 주기로 했으므로 SDK 값을 그 기준으로 바꿔서 줌.
  *
@@ -64,7 +76,7 @@ class VehicleInput(
             }
         }
     override var direction by mutableStateOf(Direction.FORWARD)  // 전진/후진은 화면 버튼
-    override val brakePressed: Boolean get() = !armed || pedalPressed != false  // 모르면 정지
+    override val brakePressed: Boolean get() = BrakeGate.holding(armed, pedalPressed)
 
     private val steeringListener = object : SteeringWheelAngleListener {
         override fun onSteeringWheelAngleUpdated(angle: Float?) {
@@ -116,14 +128,13 @@ class VehicleInput(
 
     /** 다시 하기: 다시 브레이크를 밟아야 시작 */
     fun reset() {
-        armed = false
         direction = Direction.FORWARD
-        if (pedalPressed == true) armed = true
+        armed = BrakeGate.armedAfter(false, pedalPressed)
     }
 
     private fun updatePedal(status: Boolean?) {
         pedalPressed = status
-        if (status == true) armed = true
+        armed = BrakeGate.armedAfter(armed, status)
     }
 
     private fun fail(what: String, e: Exception) {
