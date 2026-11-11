@@ -9,7 +9,6 @@ import android.content.Context
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
-import android.view.KeyEvent
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -162,20 +161,5 @@ class VoiceInput(context: Context) {
         const val TAG = "VoiceInput"
         const val LISTEN_TIMEOUT_MS = 8_000L   // 이 시간 안에 명령이 안 들리면 그만 들음
         const val DROP_LATE_CALLBACKS_MS = 1_000L   // 끊은 직후 다시 들을 때, 이전 듣기의 늦은 콜백을 버리는 최대 시간
-    }
-}
-
-/**
- * 핸들의 음성 인식 버튼(KEYCODE_VOICE_ASSIST). 주차 화면이 떠 있을 때만 가져가서 음성 명령을 시작함.
- * 다른 화면에서는 원래대로 차의 음성 비서가 받음.
- */
-object VoiceKey {
-    var onPress: (() -> Unit)? = null
-
-    fun onKey(event: KeyEvent): Boolean {
-        if (event.keyCode != KeyEvent.KEYCODE_VOICE_ASSIST) return false
-        val handler = onPress ?: return false
-        if (event.action == KeyEvent.ACTION_UP) handler()
-        return true
     }
 }
