@@ -22,7 +22,12 @@ import com.team.hyuncha.ui.theme.HyunchaTheme
 import com.team.hyuncha.ui.theme.LocalAppTextScale
 
 @Composable
-fun HyunchaApp(vehicle: Vehicle?, preferences: UiPreferences? = null, scoreRecords: ScoreRecords? = null) {
+fun HyunchaApp(
+    vehicle: Vehicle?,
+    preferences: UiPreferences? = null,
+    scoreRecords: ScoreRecords? = null,
+    vehicleInitializationFailure: Exception? = null,
+) {
     val context = LocalContext.current
     val store = remember(preferences, context) { preferences ?: UiPreferences(context) }
     var carName by rememberSaveable { mutableStateOf(store.carName) }
@@ -63,7 +68,8 @@ fun HyunchaApp(vehicle: Vehicle?, preferences: UiPreferences? = null, scoreRecor
                             ParkingScreen(vehicle, Modifier.weight(1f), initialCar = selectedCar, parkingMode = parkingMode,
                                 steeringUnit = steeringUnit, invertSteering = invertSteering, carCamera = carCamera,
                                 driverName = driverName, records = records,
-                                hardMode = hardMode && parkingMode == ParkingMode.PERPENDICULAR, hardSituation = hardSituation)
+                                hardMode = hardMode && parkingMode == ParkingMode.PERPENDICULAR, hardSituation = hardSituation,
+                                vehicleInitializationFailure = vehicleInitializationFailure)
                         }
                         "settings" -> SettingsScreen(textSize, dark,
                             onTextSizeChange = { textSizeName = it.name; store.textSize = it },

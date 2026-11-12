@@ -1,15 +1,24 @@
 package com.team.hyuncha.input
 
 import ai.pleos.playground.vehicle.Vehicle
+import ai.pleos.playground.vehicle.api.model.capability.AccessType
 import ai.pleos.playground.vehicle.constant.control.VehicleGear
 import ai.pleos.playground.vehicle.listener.BrakePedalStatusListener
 import ai.pleos.playground.vehicle.listener.GearSelectionListener
 import ai.pleos.playground.vehicle.listener.SteeringWheelAngleListener
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableDoubleStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import java.util.concurrent.atomic.AtomicBoolean
+import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withTimeoutOrNull
 
 /**
  * SDK 조향값을 어떻게 해석할지.
@@ -40,7 +49,7 @@ internal object BrakeGate {
  *
  * @param steeringRatio 지금 선택된 차종의 조향비 (차종을 바꾸면 값도 바뀌므로 람다로 받음)
  */
-class VehicleInput(
+internal class VehicleInput(
     private val vehicle: Vehicle,
     private val steeringRatio: () -> Double,
 ) : DrivingInput {
@@ -64,8 +73,12 @@ class VehicleInput(
      */
     var armed by mutableStateOf(false); private set
 
-    /** 마지막 에러 메시지 (권한·서비스 문제 확인용) */
-    var lastError by mutableStateOf<String?>(null); private set
+    var connectionFailure by mutableStateOf<VehicleConnectionFailure?>(null); private set
+    var ready by mutableStateOf(false); private set
+
+    private val main = Handler(Looper.getMainLooper())
+    private val unregisterListeners = mutableListOf<() -> Unit>()
+    private var listening = false
 
     override val steeringDeg: Double
         get() {
@@ -78,53 +91,117 @@ class VehicleInput(
     override var direction by mutableStateOf(Direction.FORWARD)  // 전진/후진은 화면 버튼
     override val brakePressed: Boolean get() = BrakeGate.holding(armed, pedalPressed)
 
-    private val steeringListener = object : SteeringWheelAngleListener {
-        override fun onSteeringWheelAngleUpdated(angle: Float?) {
-            angle?.let { rawSteering = it.toDouble() }  // null이면 이전 값 유지
-        }
-        override fun onFailed(e: Exception) = fail("조향각", e)
-    }
-
-    private val brakeListener = object : BrakePedalStatusListener {
-        override fun onBrakePedalStatusUpdated(status: Boolean?) = updatePedal(status)
-        override fun onFailed(e: Exception) = fail("브레이크", e)
-    }
-
-    private val gearListener = object : GearSelectionListener {
-        override fun onSelected(gear: VehicleGear?) {
-            this@VehicleInput.gear = gear
-        }
-        override fun onFailed(e: Exception) = fail("기어", e)
-    }
-
-    /**
-     * 리스너 등록 + 현재 값 한 번 읽기.
-     * vehicle.initialize() 직후에 불러도 됨 (SDK가 연결될 때까지 요청을 모아뒀다가 처리함)
-     */
-    @Suppress("DEPRECATION")  // Gear API는 deprecated 표시지만 2.3.2에서 동작함
-    fun start() {
-        val steering = vehicle.getSteeringWheel()
-        val brake = vehicle.getBrake()
-        val gearApi = vehicle.getGear()
-
-        steering.getCurrentSteeringWheelAngle(
-            onComplete = { angle -> angle?.let { rawSteering = it.toDouble() } },
-            onFailed = { fail("조향각", it) },
-        )
-        brake.getCurrentBrakePedalStatus(onComplete = ::updatePedal, onFailed = { fail("브레이크", it) })
-        gearApi.getCurrentGearSelectionState(onComplete = { gear = it }, onFailed = { fail("기어", it) })
-
-        steering.registerSteeringWheelAngle(steeringListener)
-        brake.registerBrakePedalStatus(brakeListener)
-        gearApi.registerGearSelection(gearListener)
-    }
-
+    /** Compose의 메인 코루틴에서 호출하며, 지원 확인 후 리스너를 등록하고 초기값을 조회한다. */
     @Suppress("DEPRECATION")
-    fun stop() {
-        vehicle.getSteeringWheel().unregisterSteeringWheelAngle(steeringListener)
-        vehicle.getBrake().unregisterBrakePedalStatus(brakeListener)
-        vehicle.getGear().unregisterGearSelection(gearListener)
+    suspend fun start() {
+        try {
+            val steering = vehicle.getSteeringWheel()
+            val brake = vehicle.getBrake()
+
+            val steeringAccess = awaitVehicle<AccessType>(VehicleStage.CAP, VehicleSignal.STEER) { complete, fail ->
+                steering.checkSteeringWheelAngleCapabilities({ config, _ -> complete(config.accessType) }, fail)
+            }
+            requireReadAccess(VehicleSignal.STEER, steeringAccess)
+            val brakeAccess = awaitVehicle<AccessType>(VehicleStage.CAP, VehicleSignal.BRAKE) { complete, fail ->
+                brake.checkBrakePedalStatusCapabilities({ config -> complete(config.accessType) }, fail)
+            }
+            requireReadAccess(VehicleSignal.BRAKE, brakeAccess)
+
+            val gearApi = vehicle.getGear()
+            var steeringEventReceived = false
+            var brakeEventReceived = false
+            var gearEventReceived = false
+            listening = true
+            val steeringListener = object : SteeringWheelAngleListener {
+                override fun onSteeringWheelAngleUpdated(angle: Float?) = postUpdate {
+                    angle?.let {
+                        steeringEventReceived = true
+                        rawSteering = it.toDouble()
+                    }
+                }
+                override fun onFailed(e: Exception) = subscriptionFailed(VehicleSignal.STEER, e)
+            }
+            val brakeListener = object : BrakePedalStatusListener {
+                override fun onBrakePedalStatusUpdated(status: Boolean?) = postUpdate {
+                    brakeEventReceived = true
+                    updatePedal(status)
+                }
+                override fun onFailed(e: Exception) = subscriptionFailed(VehicleSignal.BRAKE, e)
+            }
+            val gearListener = object : GearSelectionListener {
+                override fun onSelected(gear: VehicleGear?) = postUpdate {
+                    gearEventReceived = true
+                    this@VehicleInput.gear = gear
+                }
+                override fun onFailed(e: Exception) = subscriptionFailed(VehicleSignal.GEAR, e)
+            }
+            register(VehicleSignal.STEER, { steering.registerSteeringWheelAngle(steeringListener) }) {
+                steering.unregisterSteeringWheelAngle(steeringListener)
+            }
+            register(VehicleSignal.BRAKE, { brake.registerBrakePedalStatus(brakeListener) }) {
+                brake.unregisterBrakePedalStatus(brakeListener)
+            }
+            register(VehicleSignal.GEAR, { gearApi.registerGearSelection(gearListener) }) {
+                gearApi.unregisterGearSelection(gearListener)
+            }
+            // 콜백이 초기 조회보다 먼저 도착하면 더 오래된 조회 결과로 덮어쓰지 않는다.
+            val initialSteering = readInitial<Float>(VehicleSignal.STEER, steering::getCurrentSteeringWheelAngle)
+            if (!listening) return
+            if (!steeringEventReceived) rawSteering = initialSteering.toDouble()
+            val initialBrake = readInitial<Boolean>(VehicleSignal.BRAKE, brake::getCurrentBrakePedalStatus)
+            if (!listening) return
+            if (!brakeEventReceived) updatePedal(initialBrake)
+            val initialGear = readInitial<VehicleGear>(VehicleSignal.GEAR, gearApi::getCurrentGearSelectionState)
+            if (!listening) return
+            if (!gearEventReceived) gear = initialGear
+            ready = true
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: VehicleConnectionFailure) {
+            if (connectionFailure == null) showFailure(error)
+        }
     }
+
+    fun stop() {
+        listening = false
+        ready = false
+        unregisterListeners.asReversed().forEach { unregister ->
+            try {
+                unregister()
+            } catch (error: Exception) {
+                Log.w(TAG, "차량 리스너 해제 실패", error)
+            }
+        }
+        unregisterListeners.clear()
+    }
+
+    private fun register(signal: VehicleSignal, register: () -> Unit, unregister: () -> Unit) {
+        unregisterListeners.add(unregister)
+        try {
+            register()
+        } catch (error: Exception) {
+            throw VehicleConnectionFailure.from(VehicleStage.SUB, signal, error)
+        }
+    }
+
+    private fun postUpdate(update: () -> Unit) {
+        main.post { if (listening) update() }
+    }
+
+    private fun subscriptionFailed(signal: VehicleSignal, error: Exception) = postUpdate {
+        showFailure(VehicleConnectionFailure.from(VehicleStage.SUB, signal, error))
+    }
+
+    private fun showFailure(error: VehicleConnectionFailure) {
+        connectionFailure = error
+        stop()
+        Log.e(TAG, error.code, error.cause)
+    }
+
+    private suspend fun <T : Any> readInitial(
+        signal: VehicleSignal,
+        request: ((T?) -> Unit, (Exception) -> Unit) -> Unit,
+    ): T = awaitVehicle(VehicleStage.READ, signal, request = request) ?: throw VehicleConnectionFailure.missingValue(signal)
 
     /** 다시 하기: 다시 브레이크를 밟아야 시작 */
     fun reset() {
@@ -137,12 +214,43 @@ class VehicleInput(
         armed = BrakeGate.armedAfter(armed, status)
     }
 
-    private fun fail(what: String, e: Exception) {
-        Log.e(TAG, "$what 읽기 실패: ${e.message}", e)
-        lastError = "$what: ${e.message}"
-    }
-
     companion object {
         private const val TAG = "VehicleInput"
     }
+}
+
+internal fun requireReadAccess(signal: VehicleSignal, access: AccessType) {
+    if (access != AccessType.READ && access != AccessType.READ_WRITE) {
+        throw VehicleConnectionFailure.unsupported(signal)
+    }
+}
+
+private data class VehicleResponse<T>(val value: T)
+
+internal suspend fun <T> awaitVehicle(
+    stage: VehicleStage,
+    signal: VehicleSignal,
+    timeoutMillis: Long = 5_000,
+    request: ((T) -> Unit, (Exception) -> Unit) -> Unit,
+): T {
+    val response = withTimeoutOrNull(timeoutMillis) {
+        suspendCancellableCoroutine<VehicleResponse<T>> { continuation ->
+            val completed = AtomicBoolean(false)
+            val fail: (Exception) -> Unit = { error ->
+                if (completed.compareAndSet(false, true)) {
+                    continuation.resumeWithException(VehicleConnectionFailure.from(stage, signal, error))
+                }
+            }
+            try {
+                request({ value ->
+                    if (completed.compareAndSet(false, true)) continuation.resume(VehicleResponse(value))
+                }, fail)
+            } catch (error: CancellationException) {
+                continuation.cancel(error)
+            } catch (error: Exception) {
+                fail(error)
+            }
+        }
+    } ?: throw VehicleConnectionFailure.timeout(stage, signal)
+    return response.value
 }

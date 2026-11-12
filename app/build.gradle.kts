@@ -48,6 +48,8 @@ dependencies {
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation("ai.pleos.playground:Vehicle:2.3.2")
+    // Vehicle이 런타임에 가져오는 ErrorCode를 컴파일에서도 사용한다.
+    implementation("ai.pleos.playground:vehicle-data:1.1.11") { isTransitive = false }
     implementation("ai.pleos.playground:SpeechToText:3.3.1")   // 음성 명령 (차 안 엔진, 앱 등록 불필요)
     testImplementation(libs.junit)
     androidTestImplementation(platform(libs.androidx.compose.bom))
