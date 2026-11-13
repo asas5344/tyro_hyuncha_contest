@@ -93,6 +93,9 @@ import com.team.hyuncha.input.VoiceCommand
 import com.team.hyuncha.input.VoiceCommands
 import com.team.hyuncha.input.VoiceInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import kotlinx.coroutines.delay
 import com.team.hyuncha.safety.LockState
 import com.team.hyuncha.safety.SafetyLock
@@ -223,11 +226,22 @@ fun ParkingScreen(
 
     // 새 판 또는 화면 이탈 시 재생 중인 클락션도 정리한다.
     val context = LocalContext.current
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
     val horn = remember(sim) { if (sim.map.rules.isHard) HornPlayer(context) else null }
     DisposableEffect(horn) { onDispose { horn?.release() } }
     val hornNext = remember(sim) { intArrayOf(0) }
     val hornStartedAt = remember(sim) { mutableLongStateOf(0L) }
     val hornDurationMs = remember(sim) { intArrayOf(0) }   // 방금 울린 경적 파일의 길이
+    DisposableEffect(horn, lifecycle) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_STOP) {
+                horn?.stop()
+                hornStartedAt.longValue = 0L
+            }
+        }
+        lifecycle.addObserver(observer)
+        onDispose { lifecycle.removeObserver(observer) }
+    }
 
     // 게임 루프: 화면이 그려질 때마다(약 60fps) 시뮬레이터를 한 번씩 진행
     LaunchedEffect(sim) {
@@ -250,7 +264,8 @@ fun ParkingScreen(
                     // 안전 잠금이 풀려 있으면 시뮬레이터를 멈춤
                     sim.step(currentInput, dt)
                     val horns = sim.map.rules.hornTimesSec
-                    if (sim.status == SimStatus.DRIVING && sim.startedAtSec != null &&
+                    if (lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED) &&
+                        sim.status == SimStatus.DRIVING && sim.startedAtSec != null &&
                         hornNext[0] < horns.size && sim.clockSec >= horns[hornNext[0]]
                     ) {
                         hornDurationMs[0] = horn?.honk(hornNext[0]) ?: 0

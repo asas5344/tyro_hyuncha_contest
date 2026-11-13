@@ -163,7 +163,7 @@ Pleos의 현재 사용자에 APK를 설치합니다. 기기가 여러 대 연결
 
 PR #17에서 디버그 APK와 Android 테스트 APK를 빌드하고 단위 테스트 126개를 통과했습니다. Pleos Connect v2.1.0에서 P단 진입과 홈 복귀를 확인했고, 검증용 빌드로 권한 오류와 브레이크 미지원 안내를 재현했습니다.
 
-검증 당시 Virtual Console이 `503 emulator_inactive`를 반환해 조향·브레이크 실시간 변화와 P단 이외의 잠금은 확인이 남아 있습니다. 앱은 현재 Pleos SDK에서 기어를 읽으며, Android 표준 `GEAR_SELECTION` 조회·구독은 별도 검증 대상입니다.
+Pleos Connect v2.1.0의 검증용 빌드에서 Android 표준 `GEAR_SELECTION`의 초기 P 값, 구독 등록 성공, 최초 P 이벤트를 확인했습니다. Pleos SDK도 P를 보고했습니다. Virtual Console이 `503 emulator_inactive`를 반환해 기어 전환 이벤트, P단 이외의 잠금, 조향·브레이크 실시간 변화는 확인이 남아 있습니다. 앱의 기어 판정은 Pleos SDK를 사용합니다.
 
 ---
 
