@@ -4,6 +4,7 @@ plugins {
 }
 
 android {
+    useLibrary("android.car", false)
     namespace = "com.team.hyuncha"
     compileSdk {
         version = release(37)

@@ -2,10 +2,14 @@ package com.team.hyuncha.input
 
 import ai.pleos.playground.vehicle.Vehicle
 import ai.pleos.playground.vehicle.api.model.capability.AccessType
-import ai.pleos.playground.vehicle.constant.control.VehicleGear
 import ai.pleos.playground.vehicle.listener.BrakePedalStatusListener
-import ai.pleos.playground.vehicle.listener.GearSelectionListener
 import ai.pleos.playground.vehicle.listener.SteeringWheelAngleListener
+import android.car.Car
+import android.car.VehiclePropertyIds.GEAR_SELECTION
+import android.car.hardware.CarPropertyValue
+import android.car.hardware.property.CarPropertyManager
+import android.content.Context
+import android.content.pm.PackageManager
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
@@ -17,6 +21,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withTimeoutOrNull
 
@@ -44,13 +49,14 @@ internal object BrakeGate {
 }
 
 /**
- * 실제 차량(또는 Pleos 에뮬레이터)의 조향각·브레이크·기어를 받는 입력.
+ * Pleos SDK로 조향각·브레이크를, Android 차량 API로 기어를 읽는다.
  * DrivingInput은 핸들 각도(오른쪽 양수)를 주기로 했으므로 SDK 값을 그 기준으로 바꿔서 줌.
  *
  * @param steeringRatio 지금 선택된 차종의 조향비 (차종을 바꾸면 값도 바뀌므로 람다로 받음)
  */
 internal class VehicleInput(
     private val vehicle: Vehicle,
+    private val context: Context,
     private val steeringRatio: () -> Double,
 ) : DrivingInput {
 
@@ -62,7 +68,7 @@ internal class VehicleInput(
     var invertSteering by mutableStateOf(true)
 
     /** 마지막으로 받은 기어. 아직 못 받았으면 null */
-    var gear by mutableStateOf<VehicleGear?>(null); private set
+    var gear by mutableStateOf<Int?>(null); private set
 
     /** 마지막으로 받은 실제 브레이크 페달 상태. 아직 못 받았으면 null */
     var pedalPressed by mutableStateOf<Boolean?>(null); private set
@@ -79,6 +85,8 @@ internal class VehicleInput(
     private val main = Handler(Looper.getMainLooper())
     private val unregisterListeners = mutableListOf<() -> Unit>()
     private var listening = false
+    private var gearCar: Car? = null
+    private var unregisterGear: (() -> Unit)? = null
 
     override val steeringDeg: Double
         get() {
@@ -92,7 +100,6 @@ internal class VehicleInput(
     override val brakePressed: Boolean get() = BrakeGate.holding(armed, pedalPressed)
 
     /** Compose의 메인 코루틴에서 호출하며, 지원 확인 후 리스너를 등록하고 초기값을 조회한다. */
-    @Suppress("DEPRECATION")
     suspend fun start() {
         try {
             val steering = vehicle.getSteeringWheel()
@@ -107,10 +114,8 @@ internal class VehicleInput(
             }
             requireReadAccess(VehicleSignal.BRAKE, brakeAccess)
 
-            val gearApi = vehicle.getGear()
             var steeringEventReceived = false
             var brakeEventReceived = false
-            var gearEventReceived = false
             listening = true
             val steeringListener = object : SteeringWheelAngleListener {
                 override fun onSteeringWheelAngleUpdated(angle: Float?) = postUpdate {
@@ -128,21 +133,11 @@ internal class VehicleInput(
                 }
                 override fun onFailed(e: Exception) = subscriptionFailed(VehicleSignal.BRAKE, e)
             }
-            val gearListener = object : GearSelectionListener {
-                override fun onSelected(gear: VehicleGear?) = postUpdate {
-                    gearEventReceived = true
-                    this@VehicleInput.gear = gear
-                }
-                override fun onFailed(e: Exception) = subscriptionFailed(VehicleSignal.GEAR, e)
-            }
             register(VehicleSignal.STEER, { steering.registerSteeringWheelAngle(steeringListener) }) {
                 steering.unregisterSteeringWheelAngle(steeringListener)
             }
             register(VehicleSignal.BRAKE, { brake.registerBrakePedalStatus(brakeListener) }) {
                 brake.unregisterBrakePedalStatus(brakeListener)
-            }
-            register(VehicleSignal.GEAR, { gearApi.registerGearSelection(gearListener) }) {
-                gearApi.unregisterGearSelection(gearListener)
             }
             // 콜백이 초기 조회보다 먼저 도착하면 더 오래된 조회 결과로 덮어쓰지 않는다.
             val initialSteering = readInitial<Float>(VehicleSignal.STEER, steering::getCurrentSteeringWheelAngle)
@@ -151,9 +146,8 @@ internal class VehicleInput(
             val initialBrake = readInitial<Boolean>(VehicleSignal.BRAKE, brake::getCurrentBrakePedalStatus)
             if (!listening) return
             if (!brakeEventReceived) updatePedal(initialBrake)
-            val initialGear = readInitial<VehicleGear>(VehicleSignal.GEAR, gearApi::getCurrentGearSelectionState)
+            startGearSubscription()
             if (!listening) return
-            if (!gearEventReceived) gear = initialGear
             ready = true
         } catch (error: CancellationException) {
             throw error
@@ -162,9 +156,75 @@ internal class VehicleInput(
         }
     }
 
+    // API 34에서는 등록 직후 전달되는 최초 이벤트를 초기값으로 사용한다.
+    // 별도 조회 결과가 더 최신 이벤트를 덮어쓰는 일을 피한다.
+    @Suppress("DEPRECATION")
+    private suspend fun startGearSubscription() {
+        if (!context.packageManager.hasSystemFeature(PackageManager.FEATURE_AUTOMOTIVE)) {
+            throw VehicleConnectionFailure.unsupported(VehicleSignal.GEAR)
+        }
+
+        val initialGear = CompletableDeferred<Unit>()
+        val callback = object : CarPropertyManager.CarPropertyEventCallback {
+            override fun onChangeEvent(value: CarPropertyValue<*>) {
+                if (!listening || value.propertyId != GEAR_SELECTION) return
+                gear = if (value.status == CarPropertyValue.STATUS_AVAILABLE) value.value as? Int else null
+                if (gear != null) initialGear.complete(Unit)
+            }
+
+            override fun onErrorEvent(propertyId: Int, areaId: Int) {
+                if (listening && propertyId == GEAR_SELECTION) gear = null
+            }
+        }
+
+        try {
+            gearCar = Car.createCar(context, main, Car.CAR_WAIT_TIMEOUT_DO_NOT_WAIT) { car, connected ->
+                if (!listening) return@createCar
+                if (!connected) {
+                    gear = null
+                    val failure = VehicleConnectionFailure(
+                        VehicleStage.SUB, VehicleSignal.GEAR, "DISCONNECTED",
+                        "차량의 기어 연결이 끊겼어요.",
+                    )
+                    if (!initialGear.completeExceptionally(failure)) showFailure(failure)
+                    return@createCar
+                }
+
+                try {
+                    val manager = car.getCarManager(Car.PROPERTY_SERVICE) as CarPropertyManager
+                    check(manager.registerCallback(callback, GEAR_SELECTION, CarPropertyManager.SENSOR_RATE_ONCHANGE))
+                    unregisterGear = { manager.unregisterCallback(callback, GEAR_SELECTION) }
+                } catch (error: Exception) {
+                    val failure = VehicleConnectionFailure.from(VehicleStage.SUB, VehicleSignal.GEAR, error)
+                    if (!initialGear.completeExceptionally(failure)) showFailure(failure)
+                }
+            }
+        } catch (error: Exception) {
+            throw VehicleConnectionFailure.from(VehicleStage.INIT, VehicleSignal.GEAR, error)
+        }
+
+        withTimeoutOrNull(5_000) { initialGear.await() }
+            ?: throw VehicleConnectionFailure.timeout(VehicleStage.READ, VehicleSignal.GEAR)
+    }
+
     fun stop() {
         listening = false
+        gear = null
         ready = false
+        try {
+            unregisterGear?.invoke()
+        } catch (error: Exception) {
+            Log.w(TAG, "기어 구독 해제 실패", error)
+        } finally {
+            unregisterGear = null
+        }
+        try {
+            gearCar?.disconnect()
+        } catch (error: Exception) {
+            Log.w(TAG, "기어 서비스 연결 해제 실패", error)
+        } finally {
+            gearCar = null
+        }
         unregisterListeners.asReversed().forEach { unregister ->
             try {
                 unregister()
