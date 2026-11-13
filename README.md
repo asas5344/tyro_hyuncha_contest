@@ -16,18 +16,6 @@
   통로 폭 5.7m · 칸 폭 2.5m + 판마다 랜덤 상황 하나(두 칸 사이 기둥 / 옆 차 침범 / 이중주차). 랭킹에는 저장하지 않음.
   홈에서 랜덤 또는 연습할 상황을 선택할 수 있습니다.
 
-## 현재 상태
-
-`main`에는 Filament 3D 운전석, 채점·기기 내 랭킹, 하드 모드, 음성 명령, 차량 입력 지원 확인 및 오류 안내가 포함되어 있습니다.
-
-- 차량 연동 변경에서 디버그 APK·Android 테스트 APK 빌드와 단위 테스트 126개를 확인했습니다. Pleos Connect v2.1.0에서 P단 정상 진입과 홈 복귀를 확인했고, 검증용 빌드에서 권한 오류와 브레이크 미지원 안내를 각각 재현했습니다.
-- 검증 당시 Virtual Console의 `503 emulator_inactive` 응답으로 조향·브레이크 실시간 입력 변화와 P단 이외의 잠금은 에뮬레이터에서 확인하지 못했습니다. 현재 기어 조회는 Pleos SDK를 사용하며, Android 표준 `GEAR_SELECTION` 조회·구독 검증은 남아 있습니다.
-- 하드 모드 경적의 오디오 포커스 연동은 구현 예정입니다.
-
-3D 구현과 이전 검증 기록은 [SESSION_HANDOFF.md](SESSION_HANDOFF.md)를 참고하세요.
-
----
-
 ## 1. 처음 한 번만 하는 설정
 
 | 항목 | 내용 |
@@ -170,6 +158,12 @@ Pleos의 현재 사용자에 APK를 설치합니다. 기기가 여러 대 연결
 ./gradlew :app:testDebugUnitTest        # 단위 테스트
 ./gradlew :app:assembleDebugAndroidTest # Android 테스트 APK 빌드
 ```
+
+### 차량 연동 검증
+
+PR #17에서 디버그 APK와 Android 테스트 APK를 빌드하고 단위 테스트 126개를 통과했습니다. Pleos Connect v2.1.0에서 P단 진입과 홈 복귀를 확인했고, 검증용 빌드로 권한 오류와 브레이크 미지원 안내를 재현했습니다.
+
+검증 당시 Virtual Console이 `503 emulator_inactive`를 반환해 조향·브레이크 실시간 변화와 P단 이외의 잠금은 확인이 남아 있습니다. 앱은 현재 Pleos SDK에서 기어를 읽으며, Android 표준 `GEAR_SELECTION` 조회·구독은 별도 검증 대상입니다.
 
 ---
 
