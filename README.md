@@ -1,13 +1,12 @@
-# 옆자리 (가칭) — 초보운전자 주차 연습 앱
+# tyro — 초보운전자 주차 연습 앱
 
 현대차·기아 차량용 앱 공모전(안전운전 부문) 출품작.
 차가 P단에 서 있는 상태에서 **실제 핸들과 브레이크로** 화면 속 차를 움직여 주차를 연습하는 Pleos Connect 앱입니다.
 
 - 실제 3D 운전석과 탑뷰로 연습하는 주차 3가지: T자 주차·평행 주차·사선 주차 (목표 칸과 주차된 차가 매번 랜덤)
-- 운전석의 미러 확인, 후방/서라운드 화면과 탑뷰 전환 지원
+- 운전석의 미러 확인과 탑뷰 전환 지원. 운전석 시점에서 후진을 선택하면 미니맵 자리에 후방 카메라 또는 서라운드 뷰가 표시됩니다.
 - 차종 선택: 아반떼·그랜저 (세단), 투싼·싼타페 (SUV) — 차 크기와 회전 반경이 반영됨
-- 입력 2가지: **화면 조작** (슬라이더·버튼·키보드) / **실제 차량** (Pleos Vehicle SDK)
-- 안전 잠금: 실제 차량 모드는 기어가 P일 때만 진행
+- **차량 입력과 안전 잠금** — Pleos Vehicle SDK로 조향·브레이크·기어를 읽으며 실제 기어가 P일 때만 연습할 수 있습니다.
 - 충돌하면 실패, 칸 안에 반듯하게 멈추면 성공
 - 성공하면 **1000점 만점 점수**와 S~D 등급, 항목별 근거 + 코치 피드백 + 모범 주행 다시 보기
   (각도 300 · 좌우 위치 200 · 앞뒤 위치 100 · 전후진 전환 200 · 주행 시간 200, 기준은 `sim/Score.kt` 주석)
@@ -15,17 +14,17 @@
 - **음성 명령** (Pleos SpeechToText, 차 안 엔진): 주차 화면 왼쪽 아래 [음성 명령] 버튼
 - **하드 모드** (T자 주차만, 홈 > 하드 모드): 제한시간 40초(처음 움직인 순간부터) · 속도 8km/h · 클락션 3번(4초 고정 + 랜덤 2번) ·
   통로 폭 5.7m · 칸 폭 2.5m + 판마다 랜덤 상황 하나(두 칸 사이 기둥 / 옆 차 침범 / 이중주차). 랭킹에는 저장하지 않음.
-  상황 고르기 버튼은 확인용 (`HomeScreen.HardSituationPicker`, 나중에 뺄 예정)
+  홈에서 랜덤 또는 연습할 상황을 선택할 수 있습니다.
 
-## 현재 개발 상태
+## 현재 상태
 
-`feature/realistic` 브랜치에서 3D 운전석을 개발하고 있습니다. Filament 3D 운전석을 기본으로 사용하며, 기존 주행·충돌·주차 판정과 운전석 조작 방식을 유지합니다. 별도의 기존/3D 운전석 선택 UI는 없습니다.
+`main`에는 Filament 3D 운전석, 채점·기기 내 랭킹, 하드 모드, 음성 명령, 차량 입력 지원 확인 및 오류 안내가 포함되어 있습니다.
 
-- 구현: 네 차종 GLB, 승인된 그랜저 외형, 공통 실내와 차종별 눈높이, 미러·후방 화면·다시 보기 연결.
-- 확인: APK·계측 APK 빌드 및 단위 테스트 89개 통과. 네 차종×세 주차 방식의 3D 회귀 검사 통과. 실제 차량 모드의 브레이크 안내창과 시점 버튼은 사용자 확인 완료.
-- 남은 범위: 다른 차종 외형 품질 개선, 영상 방향·실제 차량 입력의 세부 실사용 검수, 성능·장시간 안정성 측정. 지속 30fps는 미검증입니다. 회귀 검사는 화면 표시·전환과 시뮬레이터 동작을 확인하며, 외형의 최종 시각 승인을 의미하지 않습니다.
+- 차량 연동 변경에서 디버그 APK·Android 테스트 APK 빌드와 단위 테스트 126개를 확인했습니다. Pleos Connect v2.1.0에서 P단 정상 진입과 홈 복귀를 확인했고, 검증용 빌드에서 권한 오류와 브레이크 미지원 안내를 각각 재현했습니다.
+- 검증 당시 Virtual Console의 `503 emulator_inactive` 응답으로 조향·브레이크 실시간 입력 변화와 P단 이외의 잠금은 에뮬레이터에서 확인하지 못했습니다. 현재 기어 조회는 Pleos SDK를 사용하며, Android 표준 `GEAR_SELECTION` 조회·구독 검증은 남아 있습니다.
+- 하드 모드 경적의 오디오 포커스 연동은 구현 예정입니다.
 
-개발 상태, 검증 기록, 재생성 방법과 차량 이미지 제작 기록은 [SESSION_HANDOFF.md](SESSION_HANDOFF.md)에서 확인할 수 있습니다.
+3D 구현과 이전 검증 기록은 [SESSION_HANDOFF.md](SESSION_HANDOFF.md)를 참고하세요.
 
 ---
 
@@ -33,10 +32,10 @@
 
 | 항목 | 내용 |
 |---|---|
-| Android Studio | 최신 안정 버전 (JDK는 Android Studio에 들어 있는 것 사용) |
+| Java | JDK 17로 빌드 확인 |
 | 에뮬레이터 | **Pleos Connect v2.1.0** (API 34). M 시리즈 Mac은 arm64 이미지 |
-| Pleos SDK | `ai.pleos.playground:Vehicle:2.3.2` (2.3.1은 저장소에 없음) |
-| minSdk | 28 |
+| Pleos Vehicle SDK | `ai.pleos.playground:Vehicle:2.3.2` |
+| Android SDK | 빌드용 Android SDK 37 및 Platform-Tools. 앱 최소 API는 28 |
 
 에뮬레이터 이미지 등록 주소 (Android Studio > Settings > Android SDK > SDK Update Sites):
 
@@ -47,16 +46,25 @@ SDK 저장소는 `settings.gradle.kts`의 `dependencyResolutionManagement` 안�
 
 ---
 
-## 2. 매번 시작할 때 하는 순서 ⭐
+## 2. Pleos에서 실행
 
 ### ① 에뮬레이터 켜기
-Android Studio > Device Manager > Pleos Connect ▶. **홈 화면이 다 뜰 때까지** 기다립니다.
+Android Studio의 **Device Manager**에서 Pleos Connect를 실행합니다. macOS 터미널에서는 아래처럼 저장된 상태를 불러오지 않고 시작할 수 있습니다. AVD 이름이 다르면 `-list-avds`로 확인해 바꾸세요.
+
+```bash
+"$HOME/Library/Android/sdk/emulator/emulator" \
+  -avd Pleos_Connect_v2.1.0 -no-snapshot-load
+```
+
+Pleos 홈 화면이 뜰 때까지 기다립니다.
 
 ### ② 앱 실행
-Android Studio에서 ▶ Run (또는 터미널에서 아래 "빌드" 참고).
+Android Studio에서 **Run**을 누르거나, 새 터미널에서 [빌드·설치 명령](#4-빌드설치테스트-터미널)을 실행합니다.
 
-### ③ Virtual Console 준비 (실제 차량 모드로 테스트할 때, macOS 도우미)
-다른 환경에서는 `adb forward tcp:8088 tcp:8088` 후 브라우저에서 `http://127.0.0.1:8088`을 열고, 개발자 콘솔에서 `tools/virtual-console-keyboard.js`를 실행합니다. Q·E 연결에는 `tools/steering-buttons-bridge.py`도 필요합니다.
+### ③ Virtual Console 연결
+`adb forward tcp:8088 tcp:8088`을 실행하고 브라우저에서 [Virtual Console](http://127.0.0.1:8088/)을 엽니다. 콘솔 버튼이나 **Emulation Controls > Motion**에서 기어·브레이크·조향을 조작할 수 있습니다.
+
+키보드로 조작하려면 브라우저 개발자 콘솔에서 [키보드 스크립트](tools/virtual-console-keyboard.js)를 실행합니다. Q·E 키에는 [핸들 버튼 연결 프로그램](tools/steering-buttons-bridge.py)도 필요합니다.
 
 macOS에서는 프로젝트 폴더에서 도우미를 실행할 수 있습니다:
 
@@ -87,7 +95,10 @@ macOS에서는 프로젝트 폴더에서 도우미를 실행할 수 있습니다
 
 ## 3. 조작법
 
-### 화면 조작 모드 (차량 없이 개발·테스트할 때 사용)
+### 화면 조작 모드 (개발·테스트용)
+
+일반 실행은 차량 입력을 사용합니다. 아래 조작은 테스트 코드 등에서 차량 SDK 객체 없이 화면을 열었을 때 사용할 수 있습니다.
+
 | 조작 | 동작 |
 |---|---|
 | 핸들 슬라이더 | 핸들 각도 |
@@ -112,14 +123,14 @@ macOS에서는 프로젝트 폴더에서 도우미를 실행할 수 있습니다
   터미널로 직접 보내기: `adb shell cmd car_service inject-key 88` (◀◀) / `87` (▶▶)
 
 - **콘솔의 기어는 P에 그대로 두세요.** 방향은 앱의 [전진 (D)] / [후진 (R)] 버튼으로 바꿉니다.
-  R·D로 바꾸면 앱의 안전 잠금이 걸리고, D에서는 Pleos 시스템이 "주행 중에는 사용할 수 없습니다"로 화면을 가립니다.
+  R·N·D는 앱의 안전 잠금 대상입니다. D에서는 Pleos의 주행 중 화면 제한도 적용될 수 있습니다.
 - 콘솔의 큰 BRAKE 버튼은 마우스를 누르고 있는 동안만 밟혀서 트랙패드로는 불편합니다. 키보드(Space)를 쓰세요.
 - 키보드 대신 Emulation Controls > Motion 카드의 슬라이더(Brake Pedal, Steering Angle)로도 값을 바꿀 수 있습니다.
 
 ---
 
 ### 음성 명령
-주차 화면 왼쪽 아래 **[음성 명령]**을 누르고 말합니다 (8초 동안 말이 없으면 멈춤). 브레이크는 안전을 위해 음성으로 조작하지 않습니다.
+주차 화면 왼쪽 아래 **[음성 명령]**을 누르고 말합니다 (8초 동안 말이 없으면 멈춤). 브레이크는 페달로 조작합니다. 핸들의 음성 버튼은 차량 음성 비서용입니다.
 
 | 이렇게 말하기 | 동작 |
 |---|---|
@@ -139,15 +150,26 @@ macOS에서는 프로젝트 폴더에서 도우미를 실행할 수 있습니다
 
 ---
 
-## 4. 빌드·테스트 (터미널)
+## 4. 빌드·설치·테스트 (터미널)
+
+macOS에서 이 저장소의 루트 폴더를 열고 실행합니다. Android SDK를 다른 위치에 설치했다면 `ANDROID_HOME`을 그 경로로 바꾸세요.
 
 ```bash
-./gradlew :app:testDebugUnitTest :app:assembleDebug
-adb install -r --user current app/build/outputs/apk/debug/app-debug.apk
+export JAVA_HOME="$(/usr/libexec/java_home -v 17)"
+export ANDROID_HOME="$HOME/Library/Android/sdk"
+export PATH="$ANDROID_HOME/platform-tools:$PATH"
+
+./gradlew :app:assembleDebug &&
+adb install -r --user current app/build/outputs/apk/debug/app-debug.apk &&
 adb shell am start --user current -W -n com.team.hyuncha/.MainActivity
 ```
 
-프로젝트 루트에서 실행합니다. Android Studio의 Gradle JDK 또는 `JAVA_HOME`을 설정하고, Android SDK의 `platform-tools`를 `PATH`에 추가하세요. Windows에서는 `gradlew.bat`을 사용합니다. 다중 사용자 에뮬레이터는 현재 화면의 사용자에 앱을 설치·실행해야 합니다.
+Pleos의 현재 사용자에 APK를 설치합니다. 기기가 여러 대 연결돼 있으면 `adb devices`로 Pleos 기기 ID를 확인하고 각 `adb` 명령에 `-s <기기 ID>`를 지정하세요. Windows에서는 `gradlew.bat`을 사용합니다.
+
+```bash
+./gradlew :app:testDebugUnitTest        # 단위 테스트
+./gradlew :app:assembleDebugAndroidTest # Android 테스트 APK 빌드
+```
 
 ---
 
@@ -158,7 +180,8 @@ app/src/main/java/com/team/hyuncha/
 ├── MainActivity.kt        Vehicle SDK 연결(initialize/release) + 화면
 ├── input/                 DrivingInput 인터페이스 (시뮬레이터는 입력이 어디서 오는지 모름)
 │   ├── TouchInput.kt      화면 슬라이더·버튼·키보드
-│   ├── VehicleInput.kt    Pleos SDK: 조향각·브레이크·기어 리스너
+│   ├── VehicleInput.kt    읽기 지원 확인 및 조향각·브레이크·기어 입력
+│   ├── VehicleConnectionFailure.kt  차량 연동 오류 문구와 코드
 │   ├── LookButtons.kt     핸들 ◀◀/▶▶ 버튼 → 운전석 화면에서 고개 돌리기
 │   └── VoiceInput.kt      Pleos SpeechToText 음성 명령 (VoiceCommand.kt: 말 → 명령)
 ├── safety/SafetyLock.kt   P단 확인
@@ -172,18 +195,15 @@ tools/
 └── steering-buttons-bridge.py     Q·E 키 → 에뮬레이터 핸들 버튼 (◀◀·▶▶)
 ```
 
-새 입력 방식(예: 게이밍 휠)은 `DrivingInput`을 구현하는 클래스 하나만 추가하면 시뮬레이터 수정 없이 붙습니다.
-
 ---
 
 ## 6. 알아둘 점 · 자주 막히는 곳
 
 | 증상 / 사항 | 원인 · 해결 |
 |---|---|
-| `Could not find ai.pleos.playground:Vehicle:2.3.1` | 2.3.1은 저장소에 없음. **2.3.2** 사용 |
 | SDK 호출에 빨간 줄 (`@RequiresPermission`) | Manifest에 권한 누락. 조향·브레이크·기어는 모두 `pleos.car.permission.CAR_DRIVE` |
-| Virtual Console 접속 안 됨 | 에뮬레이터 부팅 완료 확인 후 `./tools/start-console.sh` 다시 실행 |
+| Virtual Console 접속 안 됨 | Pleos 홈 화면이 뜬 뒤 `adb forward tcp:8088 tcp:8088`을 다시 실행합니다. |
+| 콘솔은 열리지만 입력이 적용되지 않음 | `503 emulator_inactive`가 반환되면 저장 상태를 불러오지 않는 방식으로 에뮬레이터를 부팅하고 다시 연결합니다. 같은 오류가 반복되면 차량 입력 검증이 보류된 상태입니다. |
 | `cmd car_service inject-vhal-event` 안 됨 | 에뮬레이터가 user 빌드라 막혀 있음. Virtual Console을 사용 |
-| **조향값 방향·단위** | SDK 문서는 "앞바퀴 각도, 왼쪽이 음수"지만, 에뮬레이터에서는 **핸들 각도가 그대로, 오른쪽이 음수**로 들어옴. 앱의 실제 차량 패널 **"조향값 해석"** 버튼(핸들 각도 / 앞바퀴 각도, 좌우 반전)으로 맞춤. **실제 차에서는 다시 확인 필요** |
-| 기어 API deprecated 경고 | SDK 2.3.2에서는 정상 동작. 이후 버전에서는 Google `GEAR_SELECTION` 속성으로 바꿔야 할 수 있음 |
+| **조향값 방향·단위** | SDK 문서는 "앞바퀴 각도, 왼쪽이 음수"지만, 에뮬레이터에서는 **핸들 각도가 그대로, 오른쪽이 음수**로 들어옴. 앱의 **설정 > 실제 차량 조향값**에서 단위와 좌우 방향을 맞춥니다. **실제 차에서는 다시 확인 필요** |
 | 차종 제원 | 전장·전폭·휠베이스는 공식 제원표. 뒤 오버행·조향비·최대 조향각은 회전 반경에서 계산한 추정치 |
