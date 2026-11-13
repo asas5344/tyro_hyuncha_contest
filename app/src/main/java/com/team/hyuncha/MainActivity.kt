@@ -16,10 +16,15 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         vehicle = Vehicle(applicationContext)
-        vehicle.initialize()  // 차량 서비스 연결 시작 (연결 전 요청은 SDK가 모아뒀다가 처리)
+        val initializationFailure = try {
+            vehicle.initialize()
+            null
+        } catch (error: Exception) {
+            error
+        }
 
         enableEdgeToEdge()
-        setContent { HyunchaApp(vehicle) }
+        setContent { HyunchaApp(vehicle, vehicleInitializationFailure = initializationFailure) }
     }
 
     // 핸들의 이전 곡·다음 곡 버튼: 운전석 화면에서는 고개 돌리기로 씀.

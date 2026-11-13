@@ -83,7 +83,10 @@ import com.team.hyuncha.input.Direction
 import com.team.hyuncha.input.DrivingInput
 import com.team.hyuncha.input.TouchInput
 import com.team.hyuncha.input.SteeringUnit
+import com.team.hyuncha.input.VehicleConnectionFailure
 import com.team.hyuncha.input.VehicleInput
+import com.team.hyuncha.input.VehicleSignal
+import com.team.hyuncha.input.VehicleStage
 import com.team.hyuncha.input.LookButtons
 import com.team.hyuncha.input.LookSide
 import com.team.hyuncha.input.VoiceCommand
@@ -106,6 +109,7 @@ import com.team.hyuncha.sim.CarPose
 import com.team.hyuncha.sim.SimStatus
 import java.util.Locale
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.withContext
 import com.team.hyuncha.ui.theme.CameraControl
 import com.team.hyuncha.ui.theme.CameraControlOutline
@@ -115,7 +119,7 @@ import com.team.hyuncha.ui.theme.CameraOverlay
 import com.team.hyuncha.ui.theme.CameraSecondaryText
 import com.team.hyuncha.ui.theme.LocalAppTextScale
 
-/** 입력 방식: 화면 조작(개발·백업용) / 실제 차량(Pleos SDK) */
+/** 입력 방식: 화면 조작(개발용) / 실제 차량(Pleos SDK) */
 enum class InputMode(val label: String) {
     TOUCH("화면 조작"),
     VEHICLE("실제 차량"),
@@ -123,7 +127,7 @@ enum class InputMode(val label: String) {
 
 /**
  * 주차 연습 화면: 탑뷰 전체 화면 + 아래쪽 작은 전진/후진 버튼.
- * 실제 차량(Virtual Console) 입력을 기본으로 쓰고, 오른쪽 조작 패널은 차량 연결이 없을 때(화면 조작 백업)만 보임.
+ * 실제 차량(Virtual Console) 입력을 사용한다. 개발·테스트에서 vehicle을 전달하지 않으면 화면 조작을 사용한다.
  * @param vehicle Pleos SDK. null이면 화면 조작만 가능
  *
  */
@@ -139,6 +143,7 @@ fun ParkingScreen(
     records: ScoreRecords? = null,
     hardMode: Boolean = false,
     hardSituation: HardSituation? = null,
+    vehicleInitializationFailure: Exception? = null,
 ) {
     val car = initialCar
     val currentCar by rememberUpdatedState(car)
@@ -147,6 +152,32 @@ fun ParkingScreen(
     val vehicleInput = remember(vehicle) {
         vehicle?.let { VehicleInput(it) { currentCar.steeringRatio } }
     }
+    val startupFailure = remember(vehicleInitializationFailure) {
+        vehicleInitializationFailure?.let { VehicleConnectionFailure.from(VehicleStage.INIT, VehicleSignal.VEHICLE, it) }
+    }
+    val failure = startupFailure ?: vehicleInput?.connectionFailure
+    LaunchedEffect(vehicleInput, mode, startupFailure) {
+        if (mode == InputMode.VEHICLE && vehicleInput != null && startupFailure == null) {
+            try {
+                vehicleInput.start()
+                if (vehicleInput.ready) awaitCancellation()
+            } finally {
+                vehicleInput.stop()
+            }
+        }
+    }
+    if (failure != null || (mode == InputMode.VEHICLE && vehicleInput?.ready == false)) {
+        Box(modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            NoticeCard(
+                text = failure?.message ?: "차량 연결을 확인하고 있어요.",
+                modifier = Modifier.padding(16.dp),
+                locked = failure != null,
+                errorCode = failure?.code,
+            )
+        }
+        return
+    }
+
     // 시점: 운전석(1인칭, 기본) ↔ 탑뷰
     var firstPerson by rememberSaveable { mutableStateOf(true) }
 
@@ -189,12 +220,6 @@ fun ParkingScreen(
     val lock = if (input === vehicleInput) SafetyLock.check(vehicleInput?.gear) else LockState.OK
     val currentInput by rememberUpdatedState(input)
     val currentLock by rememberUpdatedState(lock)
-
-    // 실제 차량 모드일 때만 SDK 리스너 등록
-    DisposableEffect(vehicleInput, mode) {
-        if (mode == InputMode.VEHICLE) vehicleInput?.start()
-        onDispose { if (mode == InputMode.VEHICLE) vehicleInput?.stop() }
-    }
 
     // 새 판 또는 화면 이탈 시 재생 중인 클락션도 정리한다.
     val context = LocalContext.current
@@ -431,7 +456,7 @@ fun ParkingScreen(
                     )
                 }
             }
-            // 화면 조작 백업 모드에서만 오른쪽 조작 패널을 보여줌
+            // 개발용 화면 조작 모드에서만 오른쪽 조작 패널을 보여줌
             if (input === touchInput) {
                 ControlPanel(
                     car = car,
@@ -692,18 +717,23 @@ private fun HudText(text: String, bold: Boolean = false) {
 }
 
 @Composable
-private fun NoticeCard(text: String, modifier: Modifier, locked: Boolean = false) {
+private fun NoticeCard(text: String, modifier: Modifier, locked: Boolean = false, errorCode: String? = null) {
     val colors = MaterialTheme.colorScheme
     Card(modifier, colors = CardDefaults.cardColors(
         containerColor = if (locked) colors.errorContainer else colors.surfaceContainerHigh,
         contentColor = if (locked) colors.onErrorContainer else colors.onSurface,
     )) {
-        Text(
-            text,
-            Modifier.padding(horizontal = 24.dp, vertical = 16.dp),
-            style = MaterialTheme.typography.titleMedium,
-            textAlign = TextAlign.Center,
-        )
+        Column(Modifier.padding(horizontal = 24.dp, vertical = 16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(text, style = MaterialTheme.typography.titleMedium, textAlign = TextAlign.Center)
+            if (errorCode != null) {
+                Text(
+                    "오류 코드 $errorCode",
+                    modifier = Modifier.padding(top = 6.dp).testTag("vehicle_connection_error"),
+                    style = MaterialTheme.typography.bodySmall,
+                    textAlign = TextAlign.Center,
+                )
+            }
+        }
     }
 }
 
@@ -1014,7 +1044,6 @@ private fun VehicleStatus(input: VehicleInput) {
                 onClick = { input.invertSteering = !input.invertSteering },
                 label = { Text("좌우 반전") },
             )
-            input.lastError?.let { Text("오류 - $it", color = MaterialTheme.colorScheme.error) }
         }
     }
 }
