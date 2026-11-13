@@ -1,6 +1,6 @@
 package com.team.hyuncha.safety
 
-import ai.pleos.playground.vehicle.constant.control.VehicleGear
+import android.car.VehicleGear
 
 /**
  * 안전 잠금: 실제 차량 입력으로 연습할 때는 P단에서만 진행.
@@ -14,7 +14,7 @@ enum class LockState(val message: String?) {
 }
 
 object SafetyLock {
-    fun check(gear: VehicleGear?): LockState = when (gear) {
+    fun check(gear: Int?): LockState = when (gear) {
         null -> LockState.CHECKING
         VehicleGear.GEAR_PARK -> LockState.OK
         else -> LockState.NOT_PARK

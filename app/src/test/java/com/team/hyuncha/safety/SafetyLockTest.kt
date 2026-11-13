@@ -1,6 +1,6 @@
 package com.team.hyuncha.safety
 
-import ai.pleos.playground.vehicle.constant.control.VehicleGear
+import android.car.VehicleGear
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
@@ -19,10 +19,17 @@ class SafetyLockTest {
         assertEquals(LockState.CHECKING, SafetyLock.check(null))
     }
 
-    /** 가장 중요: SDK가 줄 수 있는 기어 값 중 P가 아닌 것은 하나도 빠짐없이 잠겨야 함 (새 값이 추가돼도 자동으로 검사됨) */
+    /** 표준 주행 기어와 알 수 없는 값에서는 연습을 잠근다. */
     @Test
     fun P단이_아닌_모든_기어는_잠금() {
-        VehicleGear.entries.filter { it != VehicleGear.GEAR_PARK }.forEach { gear ->
+        val nonPark = listOf(
+            VehicleGear.GEAR_UNKNOWN, VehicleGear.GEAR_NEUTRAL, VehicleGear.GEAR_REVERSE,
+            VehicleGear.GEAR_DRIVE, VehicleGear.GEAR_FIRST, VehicleGear.GEAR_SECOND,
+            VehicleGear.GEAR_THIRD, VehicleGear.GEAR_FOURTH, VehicleGear.GEAR_FIFTH,
+            VehicleGear.GEAR_SIXTH, VehicleGear.GEAR_SEVENTH, VehicleGear.GEAR_EIGHTH,
+            VehicleGear.GEAR_NINTH, Int.MAX_VALUE,
+        )
+        nonPark.forEach { gear ->
             assertEquals("$gear", LockState.NOT_PARK, SafetyLock.check(gear))
         }
     }

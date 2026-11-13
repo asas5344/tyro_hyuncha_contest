@@ -1,8 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
-    <!-- 조향각·브레이크·기어 읽기 (SDK 소스 기준 모두 CAR_DRIVE) -->
+    <!-- 조향각·브레이크는 Pleos SDK, 기어는 Android 차량 API로 읽는다. -->
     <uses-permission android:name="pleos.car.permission.CAR_DRIVE" />
+    <uses-permission android:name="android.car.permission.CAR_POWERTRAIN" />
     <uses-permission android:name="pleos.car.permission.STT_SERVICE" />
 
     <application
