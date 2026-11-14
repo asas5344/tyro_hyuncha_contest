@@ -22,9 +22,13 @@ android {
 
     buildTypes {
         release {
+            // 공모전 제출용: 따로 만든 서명 키 없이도 설치되도록 디버그 키로 서명함.
+            // 앱 마켓에 올릴 때는 전용 서명 키로 바꿔야 함.
+            signingConfig = signingConfigs.getByName("debug")
+            // 코드 축소(R8 최적화)는 끔: 일부 패키지만 최적화하던 설정에서는 앱이 켜지자마자
+            // IllegalAccessError로 죽었음 (2026-11-14 Pleos 에뮬레이터 확인).
             optimization {
-                enable = true
-                packageScope = setOf("androidx.**", "kotlin.**", "kotlinx.**")
+                enable = false
             }
         }
     }
