@@ -12,7 +12,8 @@
 |---|---|
 | 앱 이름 | **tyro** |
 | APK 파일 위치 | [`apk/초보면어때_tyro_release.apk`](apk/초보면어때_tyro_release.apk) (release 빌드, 약 72MB) |
-| 테스트 환경 | **Pleos Connect 에뮬레이터 v2.1.0** (Android Automotive, API 34). Apple M 시리즈 Mac의 arm64 이미지에서 확인 |
+| 개발·테스트에 사용한 에뮬레이터 | **Pleos Connect 에뮬레이터 v2.1.0** (Android Automotive, Android 14 / API 34, arm64-v8a 이미지). Apple M 시리즈 Mac에서 실행 |
+| 화면 규격 | **2560 × 1440 픽셀, 가로 화면, 160dpi** (에뮬레이터 기본 설정). 앱은 이 화면에서 차량 정보 패널을 뺀 오른쪽 영역에 표시됩니다 |
 | 차량 입력 | 에뮬레이터의 **Virtual Console**로 핸들·브레이크·기어 값을 넣습니다 (`http://127.0.0.1:8088`) |
 
 ### 실행 방법 (APK 설치)
