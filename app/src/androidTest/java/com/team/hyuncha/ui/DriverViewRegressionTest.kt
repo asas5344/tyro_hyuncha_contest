@@ -9,7 +9,6 @@ import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.test.platform.app.InstrumentationRegistry
 import org.junit.Rule
 import org.junit.Test
-import java.io.File
 import java.io.ByteArrayOutputStream
 import android.util.Base64
 import android.util.Log
