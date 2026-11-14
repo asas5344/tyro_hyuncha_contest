@@ -85,10 +85,14 @@ internal class ParkingMesh {
     companion object {
         fun garage(map: ParkingMap): ByteBuffer = ParkingMesh().apply {
             flat(OrientedRect(Vec2(map.widthM/2,map.heightM/2),map.widthM/2,map.heightM/2,0.0),0.0,0)
-            map.lines.forEach { (a,b) -> strip(a,b,.095,.012,1) }
-            flat(map.slot,.008,2)
+            // Separate the floor markings in depth so they stay visible at shallow camera angles.
+            val slotFillHeight = .02
+            val parkingLineHeight = .04
+            val slotOutlineHeight = .06
+            map.lines.forEach { (a, b) -> strip(a, b, .095, parkingLineHeight, 1) }
+            flat(map.slot, slotFillHeight, 2)
             val corners=map.slot.corners()
-            for (i in corners.indices) strip(corners[i],corners[(i+1)%4],.1,.016,2)
+            for (i in corners.indices) strip(corners[i], corners[(i + 1) % 4], .1, slotOutlineHeight, 2)
             map.walls.forEach { stripedConcrete(it) }
             map.pillars.forEach { stripedConcrete(it) }
         }.build()
