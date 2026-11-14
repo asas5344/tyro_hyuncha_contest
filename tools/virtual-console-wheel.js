@@ -27,10 +27,11 @@
 
   // ── 설정 (브라우저에 저장) ──────────────────────────────────────────────
   // steerAxis: 핸들 축 번호 / center: 가운데일 때 축 값 / rangeDeg: 휠 끝에서 끝까지 회전 각도
+  // gap: 핸들 축의 빈 구간 (아래 steerValue 설명) / null = 아직 모름
   // brake: { type: "axis"|"button", index, rest(뗀 값), pressed(밟은 값) } / prev·next: 미러 버튼 번호
   const STORE = "tyroWheelConfig";
   const cfg = Object.assign(
-    { steerAxis: 0, invert: false, rangeDeg: 1080, center: 0, brake: null, prev: null, next: null },
+    { steerAxis: 0, invert: false, rangeDeg: 1080, center: 0, gap: null, brake: null, prev: null, next: null },
     JSON.parse(localStorage.getItem(STORE) || "{}"),
   );
   const save = () => localStorage.setItem(STORE, JSON.stringify(cfg));
@@ -66,6 +67,33 @@
       .catch(() => console.warn("핸들 버튼 연결 프로그램이 꺼져 있어요. 터미널에서 ./tools/start-console.sh wheel 을 다시 실행하세요"));
   };
   const mirrorHeld = { prev: false, next: false };
+
+  // ── 핸들 축 값 → -1~1 ───────────────────────────────────────────────────
+  // 드라이버 없이 잡힌 휠은 가운데 근처 값을 보내지 않음: 0 다음이 바로 ±0.30 (T300 PC 모드에서 확인).
+  // 그대로 쓰면 조금만 돌려도 화면 핸들이 160도쯤으로 튀므로, 이 빈 구간(gap)을 빼고 나머지를 0~1로 다시 폄.
+  // gap은 지금까지 본 "0이 아닌 가장 작은 값"으로 스스로 찾음. 빈 구간이 없는 휠이면 gap이 0에 가까워져 영향이 없음.
+  let gapCandidate = null;
+  let gapCandidateTicks = 0;
+  const steerValue = (raw) => {
+    const x = raw - cfg.center;
+    const size = Math.abs(x);
+    // 한 프레임짜리 튀는 값에 속지 않도록, 더 작은 값이 3번 연속 보일 때만 gap을 줄임
+    if (size > 0.005 && (cfg.gap === null || size < cfg.gap - 0.001)) {
+      gapCandidate = gapCandidate === null ? size : Math.max(gapCandidate, size);
+      if (++gapCandidateTicks >= 3) {
+        cfg.gap = gapCandidate;
+        save();
+        gapCandidate = null;
+        gapCandidateTicks = 0;
+      }
+    } else {
+      gapCandidate = null;
+      gapCandidateTicks = 0;
+    }
+    const gap = Math.min(cfg.gap ?? 0, 0.9);
+    if (size <= gap) return 0;
+    return Math.sign(x) * Math.min(1, (size - gap) / (1 - gap));
+  };
 
   // ── 휠 찾기 ────────────────────────────────────────────────────────────
   const getPad = () => {
@@ -161,6 +189,7 @@
     const i = bestAxis(r, -1);
     if (i < 0 || rangeOf(r.axes[i]) < 0.2) return say("핸들 움직임을 못 찾았어요. 다시 눌러서 더 크게 돌려 보세요.");
     cfg.steerAxis = i;
+    cfg.gap = null;
     save();
     say(`핸들 = 축 ${i}. 핸들을 가운데 두고 [가운데 맞추기]를 누르세요.`);
   }));
@@ -193,6 +222,7 @@
     const pad = getPad();
     if (!pad) return say("휠이 안 보여요. 휠의 버튼을 한 번 눌러 주세요.");
     cfg.center = pad.axes[cfg.steerAxis] || 0;
+    cfg.gap = null;
     save();
     say("지금 핸들 위치를 가운데(0도)로 맞췄어요.");
   });
@@ -200,7 +230,7 @@
   // 드라이버 없이 잡힌 휠은 축 값이 실제 회전 범위와 달라서(조금만 돌려도 끝까지 감) 직접 재야 함.
   button("90도 맞추기", () => learn("핸들을 오른쪽으로 90도(3시 방향) 돌린 채 기다리세요", () => {
     const pad = getPad();
-    const offset = pad ? (pad.axes[cfg.steerAxis] || 0) - cfg.center : 0;
+    const offset = pad ? steerValue(pad.axes[cfg.steerAxis] || 0) : 0;
     if (Math.abs(offset) < 0.02) return say("핸들이 가운데에 있어요. 먼저 [가운데 맞추기]를 하고, 90도 돌린 채로 다시 해 보세요.");
     cfg.rangeDeg = Math.round(180 / Math.abs(offset));   // 축 1 = 휠 끝 = rangeDeg의 절반
     cfg.invert = offset < 0;                             // 오른쪽으로 돌렸는데 값이 음수면 뒤집음
@@ -233,7 +263,7 @@
   button("오른쪽 미러 버튼", learnMirror("next", "오른쪽"));
   button("설정 지우기", () => {
     localStorage.removeItem(STORE);
-    Object.assign(cfg, { steerAxis: 0, invert: false, rangeDeg: 1080, center: 0, brake: null, prev: null, next: null });
+    Object.assign(cfg, { steerAxis: 0, invert: false, rangeDeg: 1080, center: 0, gap: null, brake: null, prev: null, next: null });
     say("설정을 지웠어요. [핸들 찾기]부터 다시 하세요.");
   });
   document.body.appendChild(panel);
@@ -254,7 +284,7 @@
 
     // 핸들: 축 값(-1~1)을 각도로. 휠 끝이 rangeDeg의 절반
     const raw = pad.axes[cfg.steerAxis] || 0;
-    const angle = Math.max(-MAX, Math.min(MAX, (raw - cfg.center) * (cfg.rangeDeg / 2) * (cfg.invert ? -1 : 1)));
+    const angle = Math.max(-MAX, Math.min(MAX, steerValue(raw) * (cfg.rangeDeg / 2) * (cfg.invert ? -1 : 1)));
     setAngle(angle);
 
     // 브레이크: 뗀 값 0 ~ 밟은 값 1로 바꿔서 판단. 모르면 밟은 것으로 둠
