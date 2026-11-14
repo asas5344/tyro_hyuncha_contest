@@ -1,7 +1,54 @@
 # tyro — 초보운전자 주차 연습 앱
 
-현대차·기아 차량용 앱 공모전(안전운전 부문) 출품작.
+현대차·기아 차량용 앱 공모전(안전운전 부문) 출품작. 팀 **초보면 어때**.
+
+**한 줄 소개**: 주차된 내 차 안에서 차종별 가상 환경으로 다양한 주차 상황을 연습하고, 주행 경로 분석과 맞춤 피드백으로 차폭·거리·조향 감각을 익히는 차량용 앱.
+
 차가 P단에 서 있는 상태에서 **실제 핸들과 브레이크로** 화면 속 차를 움직여 주차를 연습하는 Pleos Connect 앱입니다.
+
+## 제출 안내 (심사용 요약)
+
+| 항목 | 내용 |
+|---|---|
+| 앱 이름 | **tyro** |
+| APK 파일 위치 | [`apk/초보면어때_tyro_release.apk`](apk/초보면어때_tyro_release.apk) (release 빌드, 약 72MB) |
+| 테스트 환경 | **Pleos Connect 에뮬레이터 v2.1.0** (Android Automotive, API 34). Apple M 시리즈 Mac의 arm64 이미지에서 확인 |
+| 차량 입력 | 에뮬레이터의 **Virtual Console**로 핸들·브레이크·기어 값을 넣습니다 (`http://127.0.0.1:8088`) |
+
+### 실행 방법 (APK 설치)
+
+1. Pleos Connect 에뮬레이터를 켭니다. (에뮬레이터 이미지 등록은 아래 [1. 처음 한 번만 하는 설정](#1-처음-한-번만-하는-설정))
+2. APK를 설치하고 실행합니다.
+
+   ```bash
+   adb install -r --user current apk/초보면어때_tyro_release.apk
+   adb shell am start --user current -n com.team.hyuncha/.MainActivity
+   ```
+
+   다른 서명으로 빌드한 같은 앱이 이미 깔려 있으면 설치가 거부됩니다. 그때는 `adb uninstall com.team.hyuncha` 후 다시 설치하세요.
+3. Virtual Console을 엽니다.
+
+   ```bash
+   adb forward tcp:8088 tcp:8088
+   ```
+
+   브라우저에서 `http://127.0.0.1:8088` 을 엽니다. macOS에서는 `./tools/start-console.sh` 한 번으로 준비됩니다.
+4. 콘솔의 **기어를 P**에 둔 채, 앱 홈에서 **연습 시작**을 누릅니다.
+5. 콘솔에서 **브레이크를 한 번 밟았다 떼면** 가상 차가 천천히 움직입니다. 핸들은 콘솔의 Steering Angle로 돌리고, 전진·후진은 앱 화면 오른쪽 아래 버튼으로 바꿉니다.
+
+소스에서 직접 빌드하는 방법은 [4. 빌드·설치·테스트](#4-빌드설치테스트-터미널)에 있습니다.
+
+### 필요한 설정
+
+- **기어는 P**: 안전 잠금 때문에 P단이 아니면 연습이 멈춥니다. D단에서는 Pleos 시스템이 앱 화면을 가립니다.
+- **권한**: 조향·브레이크(`pleos.car.permission.CAR_DRIVE`), 기어(`android.car.permission.CAR_POWERTRAIN`), 음성 인식(`pleos.car.permission.STT_SERVICE`). 설치할 때 자동으로 부여되며 따로 허용할 것은 없습니다.
+- **음성 명령**: 에뮬레이터 마이크가 켜져 있어야 합니다 (`adb emu avd hostmicon`).
+- **키보드·레이싱 휠 조작**(선택): 콘솔을 키보드나 레이싱 휠로 조작하는 보조 스크립트가 `tools/`에 있습니다. 사용법은 [3. 조작법](#3-조작법).
+- 차량 연결이나 입력 조회에 실패하면 앱이 안내 문구와 오류 코드를 보여 주고 연습을 시작하지 않습니다.
+
+---
+
+## 주요 기능
 
 - 실제 3D 운전석과 탑뷰로 연습하는 주차 3가지: T자 주차·평행 주차·사선 주차 (목표 칸과 주차된 차가 매번 랜덤)
 - 운전석의 미러 확인과 탑뷰 전환 지원. 운전석 시점에서 후진을 선택하면 미니맵 자리에 후방 카메라 또는 서라운드 뷰가 표시됩니다.
@@ -187,7 +234,10 @@ Pleos의 현재 사용자에 APK를 설치합니다. 기기가 여러 대 연결
 ```bash
 ./gradlew :app:testDebugUnitTest        # 단위 테스트
 ./gradlew :app:assembleDebugAndroidTest # Android 테스트 APK 빌드
+./gradlew :app:assembleRelease          # 제출용 release APK (app/build/outputs/apk/release/app-release.apk)
 ```
+
+제출용 APK는 release 빌드를 `apk/초보면어때_tyro_release.apk`로 복사한 것입니다. 따로 만든 서명 키 없이 설치할 수 있도록 디버그 키로 서명합니다 (`app/build.gradle.kts`).
 
 ### 차량 연동 검증
 
