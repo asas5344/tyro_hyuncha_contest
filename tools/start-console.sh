@@ -42,6 +42,13 @@ else
   exit 1
 fi
 
+# 옛 버전 연결 프로그램이 켜져 있으면(전진·후진 버튼을 모름) 끄고 새로 켬
+if curl -s -o /dev/null --max-time 2 "http://127.0.0.1:8089/" &&
+   [[ "$(curl -s --max-time 2 "http://127.0.0.1:8089/version")" != "2" ]]; then
+  lsof -ti tcp:8089 | xargs kill 2>/dev/null
+  sleep 0.5
+fi
+
 # 핸들 버튼 연결: 이미 켜져 있으면 그대로 둠. 터미널을 닫아도 계속 켜져 있음
 if curl -s -o /dev/null --max-time 2 "http://127.0.0.1:8089/" ; then
   echo "✅ 핸들 버튼 연결 이미 켜져 있음 (Q·E 키)"
@@ -76,7 +83,8 @@ if [[ "$1" == "wheel" ]]; then
   echo "  1. 열린 크롬 창에서 Cmd + Option + J (개발자 콘솔)"
   echo "  2. Cmd + V 로 붙여넣고 Enter"
   echo "  3. 휠의 아무 버튼이나 한 번 누르기 → 오른쪽 위 패널에 휠 이름이 뜸"
-  echo "  4. 패널에서 [핸들 찾기] → [브레이크 찾기] → [가운데 맞추기] (처음 한 번만)"
+  echo "  4. 패널에서 [핸들 찾기] → [브레이크 찾기] → [가운데 맞추기] → [90도 맞추기] (처음 한 번만)"
+  echo "     선택: [전후진 버튼] [다시 하기 버튼] [왼쪽·오른쪽 미러 버튼]"
   echo "  ※ 콘솔 창은 최소화하지 말고 화면에 보이게 두세요."
 else
   open "$URL"
