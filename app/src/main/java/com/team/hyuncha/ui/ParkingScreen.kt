@@ -361,6 +361,8 @@ fun ParkingScreen(
                         Key.DirectionDown -> { if (down) input.direction = Direction.REVERSE; true }
                         Key.Spacebar -> { touchInput.brakePressed = !down; true }  // 누르는 동안 진행
                         Key.R -> { if (down) restart(); true }
+                        // 화면의 [음성 명령] 버튼과 같은 동작 (누르고 있어도 한 번만)
+                        Key.V -> { if (down && e.nativeKeyEvent.repeatCount == 0) voice.toggle(); true }
                         else -> false
                     }
                 },
