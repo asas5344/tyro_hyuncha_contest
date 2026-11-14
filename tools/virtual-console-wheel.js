@@ -9,7 +9,8 @@
 //   2. 오른쪽 위 패널에서 [핸들 찾기] → 4초 동안 핸들을 좌우로 돌림
 //   3. [브레이크 찾기] → 4초 안에 브레이크 페달을 끝까지 밟았다 뗌
 //   4. 핸들을 가운데 두고 [가운데 맞추기]
-//   (선택) [왼쪽 미러 버튼] / [오른쪽 미러 버튼] → 4초 안에 쓸 패들·버튼을 누름
+//   5. [90도 맞추기] → 핸들을 오른쪽 90도로 돌린 채 기다림 (실제 각도와 화면 각도 맞추기)
+//   (선택) [전후진 버튼] / [다시 하기 버튼] / [왼쪽 미러 버튼] / [오른쪽 미러 버튼] → 4초 안에 쓸 패들·버튼을 누름
 // 찾은 설정은 브라우저에 저장돼서 다음부터는 1번만 하면 됨.
 //
 // 주의
@@ -17,7 +18,9 @@
 //     브레이크를 밟아 버려서 휠과 충돌함. 이미 붙여넣었다면 페이지를 새로고침한 뒤 이것만 실행.
 //   - 콘솔 창이 화면에 보여야 함 (최소화하거나 다른 탭 뒤로 보내면 크롬이 휠 값을 멈춤).
 //   - 휠이 안 보이거나 브레이크를 아직 못 찾았으면 안전하게 브레이크를 밟은 상태로 둠.
-//   - 미러 버튼은 tools/start-console.sh가 켜 주는 연결 프로그램(steering-buttons-bridge.py)이 필요함.
+//   - 전후진 버튼은 누를 때마다 전진 → 후진 → 전진 순서로 보냄. 화면 버튼이나 음성으로 방향을 바꿨으면
+//     휠 쪽 순서와 어긋나서 한 번 더 눌러야 할 수 있음. [다시 하기 버튼]을 누르면 전진부터 다시 셈.
+//   - 미러·전후진·다시 하기 버튼은 tools/start-console.sh가 켜 주는 연결 프로그램(steering-buttons-bridge.py)이 필요함.
 (() => {
   if (window.__wheelControl) return console.log("휠 조작이 이미 켜져 있어요");
   if (window.__keyboardControl) {
@@ -29,9 +32,10 @@
   // steerAxis: 핸들 축 번호 / center: 가운데일 때 축 값 / rangeDeg: 휠 끝에서 끝까지 회전 각도
   // gap: 핸들 축의 빈 구간 (아래 steerValue 설명) / null = 아직 모름
   // brake: { type: "axis"|"button", index, rest(뗀 값), pressed(밟은 값) } / prev·next: 미러 버튼 번호
+  // dir: 전진↔후진을 바꾸는 버튼 번호 / restart: 다시 하기 버튼 번호
   const STORE = "tyroWheelConfig";
   const cfg = Object.assign(
-    { steerAxis: 0, invert: false, rangeDeg: 1080, center: 0, gap: null, brake: null, prev: null, next: null },
+    { steerAxis: 0, invert: false, rangeDeg: 1080, center: 0, gap: null, brake: null, prev: null, next: null, dir: null, restart: null },
     JSON.parse(localStorage.getItem(STORE) || "{}"),
   );
   const save = () => localStorage.setItem(STORE, JSON.stringify(cfg));
@@ -67,6 +71,12 @@
       .catch(() => console.warn("핸들 버튼 연결 프로그램이 꺼져 있어요. 터미널에서 ./tools/start-console.sh wheel 을 다시 실행하세요"));
   };
   const mirrorHeld = { prev: false, next: false };
+
+  // 전후진·다시 하기: 눌렀을 때 한 번만 보냄. 드라이버 없이 잡힌 휠은 버튼 여러 개가 한순간 같이 눌린 것처럼
+  // 튀는 일이 있어서(기록에서 확인), 5프레임(약 0.08초) 이상 눌려 있고 동시에 눌린 버튼이 3개 이하일 때만 인정
+  const TAP_TICKS = 5;
+  const tapTicks = { dir: 0, restart: 0 };
+  let reverse = false;   // 휠 쪽에서 세는 방향 (앱은 다시 하기 뒤 전진부터 시작)
 
   // ── 핸들 축 값 → -1~1 ───────────────────────────────────────────────────
   // 드라이버 없이 잡힌 휠은 가운데 근처 값을 보내지 않음: 0 다음이 바로 ±0.30 (T300 PC 모드에서 확인).
@@ -250,20 +260,24 @@
     save();
     say(`회전 범위 ${deg}도`);
   });
-  const learnMirror = (key, name) => () => learn(`${name} 미러로 쓸 패들·버튼을 누르세요`, (r) => {
+  // 버튼 하나를 기능에 연결. 이미 다른 기능에 쓰는 버튼과 브레이크와 같은 신호는 고르지 못하게 함
+  const BUTTON_KEYS = ["prev", "next", "dir", "restart"];
+  const learnButton = (key, name) => () => learn(`${name}(으)로 쓸 패들·버튼을 누르세요`, (r) => {
     if (brakeMoved(r)) return say("방금 누른 것은 브레이크와 같은 신호를 보내요. 다른 버튼을 골라 주세요.");
-    const other = key === "prev" ? cfg.next : cfg.prev;
-    const i = bestButton(r, other === null ? [] : [other]);
-    if (i < 0 || r.buttons[i] < 0.5) return say("눌린 버튼을 못 찾았어요.");
+    const taken = BUTTON_KEYS.filter((k) => k !== key && cfg[k] !== null).map((k) => cfg[k]);
+    const i = bestButton(r, taken);
+    if (i < 0 || r.buttons[i] < 0.5) return say("눌린 버튼을 못 찾았어요. (다른 기능에 이미 쓰는 버튼은 고를 수 없어요)");
     cfg[key] = i;
     save();
-    say(`${name} 미러 = 버튼 ${i}`);
+    say(`${name} = 버튼 ${i}`);
   });
-  button("왼쪽 미러 버튼", learnMirror("prev", "왼쪽"));
-  button("오른쪽 미러 버튼", learnMirror("next", "오른쪽"));
+  button("전후진 버튼", learnButton("dir", "전진↔후진 바꾸기"));
+  button("다시 하기 버튼", learnButton("restart", "다시 하기"));
+  button("왼쪽 미러 버튼", learnButton("prev", "왼쪽 미러"));
+  button("오른쪽 미러 버튼", learnButton("next", "오른쪽 미러"));
   button("설정 지우기", () => {
     localStorage.removeItem(STORE);
-    Object.assign(cfg, { steerAxis: 0, invert: false, rangeDeg: 1080, center: 0, gap: null, brake: null, prev: null, next: null });
+    Object.assign(cfg, { steerAxis: 0, invert: false, rangeDeg: 1080, center: 0, gap: null, brake: null, prev: null, next: null, dir: null, restart: null });
     say("설정을 지웠어요. [핸들 찾기]부터 다시 하세요.");
   });
   document.body.appendChild(panel);
@@ -304,6 +318,24 @@
       if (down !== mirrorHeld[key]) {
         mirrorHeld[key] = down;
         sendButton(key, down ? "down" : "up");
+      }
+    }
+
+    // 전후진·다시 하기 버튼
+    const downCount = pad.buttons.filter((b) => b.pressed).length;
+    for (const key of ["dir", "restart"]) {
+      // 버튼을 찾는 중에는 보내지 않음 (찾으려고 누른 것이 방향을 바꾸면 안 되므로)
+      const down = !learning && cfg[key] !== null && !!pad.buttons[cfg[key]]?.pressed && downCount <= 3;
+      tapTicks[key] = down ? tapTicks[key] + 1 : 0;
+      if (tapTicks[key] !== TAP_TICKS) continue;   // 딱 한 번만
+      if (key === "dir") {
+        reverse = !reverse;
+        sendButton(reverse ? "reverse" : "forward", "tap");
+        say(reverse ? "후진으로 바꿨어요" : "전진으로 바꿨어요");
+      } else {
+        reverse = false;
+        sendButton("restart", "tap");
+        say("다시 하기");
       }
     }
 
