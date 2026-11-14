@@ -1,0 +1,250 @@
+// Pleos Virtual Console 레이싱 휠 조작 스크립트 (Thrustmaster T300 등)
+//
+// 맥에 꽂은 휠의 핸들·브레이크 페달 값을 크롬이 읽어서(Gamepad API) 콘솔에 넣어 줌.
+// 앱은 평소처럼 Pleos SDK로 차량 신호를 받으므로 앱 코드는 바뀌지 않음.
+//   휠 → (USB) → 맥 → 크롬의 Virtual Console 페이지 → 에뮬레이터 차량 신호 → 앱
+//
+// 사용법: ./tools/start-console.sh wheel → 열린 크롬 창에서 Cmd + Option + J → 붙여넣기 → Enter
+//   1. 휠의 아무 버튼이나 한 번 누름 (크롬은 버튼을 눌러야 휠을 보여 줌)
+//   2. 오른쪽 위 패널에서 [핸들 찾기] → 4초 동안 핸들을 좌우로 돌림
+//   3. [브레이크 찾기] → 4초 안에 브레이크 페달을 끝까지 밟았다 뗌
+//   4. 핸들을 가운데 두고 [가운데 맞추기]
+//   (선택) [왼쪽 미러 버튼] / [오른쪽 미러 버튼] → 4초 안에 쓸 패들·버튼을 누름
+// 찾은 설정은 브라우저에 저장돼서 다음부터는 1번만 하면 됨.
+//
+// 주의
+//   - 키보드 스크립트(virtual-console-keyboard.js)와 같이 쓰지 않음. 그 스크립트는 창을 벗어나면
+//     브레이크를 밟아 버려서 휠과 충돌함. 이미 붙여넣었다면 페이지를 새로고침한 뒤 이것만 실행.
+//   - 콘솔 창이 화면에 보여야 함 (최소화하거나 다른 탭 뒤로 보내면 크롬이 휠 값을 멈춤).
+//   - 휠이 안 보이거나 브레이크를 아직 못 찾았으면 안전하게 브레이크를 밟은 상태로 둠.
+//   - 미러 버튼은 tools/start-console.sh가 켜 주는 연결 프로그램(steering-buttons-bridge.py)이 필요함.
+(() => {
+  if (window.__wheelControl) return console.log("휠 조작이 이미 켜져 있어요");
+  if (window.__keyboardControl) {
+    return console.warn("키보드 조작 스크립트가 켜져 있어요. 페이지를 새로고침한 뒤 휠 스크립트만 실행하세요.");
+  }
+  window.__wheelControl = true;
+
+  // ── 설정 (브라우저에 저장) ──────────────────────────────────────────────
+  // steerAxis: 핸들 축 번호 / center: 가운데일 때 축 값 / rangeDeg: 휠 끝에서 끝까지 회전 각도
+  // brake: { type: "axis"|"button", index, rest(뗀 값), pressed(밟은 값) } / prev·next: 미러 버튼 번호
+  const STORE = "tyroWheelConfig";
+  const cfg = Object.assign(
+    { steerAxis: 0, invert: false, rangeDeg: 1080, center: 0, brake: null, prev: null, next: null },
+    JSON.parse(localStorage.getItem(STORE) || "{}"),
+  );
+  const save = () => localStorage.setItem(STORE, JSON.stringify(cfg));
+
+  const MAX = 540;            // 콘솔 핸들 한계 (좌우 540도)
+  const LEARN_SECONDS = 4;
+  const brakePad = document.getElementById("brakePad");
+
+  // ── 콘솔에 값 넣기 (키보드 스크립트와 같은 방식) ──────────────────────────
+  let brakeSent = null;
+  const setBrake = (pressed) => {
+    if (pressed === brakeSent) return;
+    if (pressed && parkTransitionPending) return;
+    brakeSent = pressed;
+    pedalControl.brake = true;   // 뗄 때도 true로 둬야 "뗌"이 차량에 전달됨
+    pedals.brake = pressed;
+    brakePad.classList.toggle("pressed", pressed);
+    markLocalControl();
+  };
+
+  let angleSent = null;
+  const setAngle = (angle) => {
+    if (angleSent !== null && Math.abs(angle - angleSent) < 0.3) return;
+    angleSent = angle;
+    setSteeringAngle(angle, true);   // 오른쪽이 양수
+  };
+
+  // 미러 버튼: 누름·뗌 순서가 바뀌지 않도록 앞 요청이 끝난 뒤에 다음 요청을 보냄
+  let queue = Promise.resolve();
+  const sendButton = (key, action) => {
+    queue = queue
+      .then(() => fetch(`http://127.0.0.1:8089/button?key=${key}&action=${action}`))
+      .catch(() => console.warn("핸들 버튼 연결 프로그램이 꺼져 있어요. 터미널에서 ./tools/start-console.sh wheel 을 다시 실행하세요"));
+  };
+  const mirrorHeld = { prev: false, next: false };
+
+  // ── 휠 찾기 ────────────────────────────────────────────────────────────
+  const getPad = () => {
+    const pads = [...navigator.getGamepads()].filter(Boolean);
+    return pads.find((p) => /thrustmaster|t300|wheel|044f/i.test(p.id)) || pads[0] || null;
+  };
+
+  // ── 화면 패널 ──────────────────────────────────────────────────────────
+  const panel = document.createElement("div");
+  panel.style.cssText =
+    "position:fixed;top:12px;right:12px;z-index:99999;width:300px;padding:12px;border-radius:12px;" +
+    "background:rgba(20,22,28,.94);color:#fff;font:13px/1.5 -apple-system,sans-serif;box-shadow:0 4px 20px rgba(0,0,0,.4)";
+  const line = (bold) => {
+    const el = document.createElement("div");
+    if (bold) el.style.fontWeight = "600";
+    panel.appendChild(el);
+    return el;
+  };
+  const title = line(true);
+  const values = line();
+  const message = line();
+  message.style.cssText = "margin:6px 0;color:#ffd166;min-height:20px";
+  const buttonRow = document.createElement("div");
+  buttonRow.style.cssText = "display:flex;flex-wrap:wrap;gap:6px";
+  panel.appendChild(buttonRow);
+  const button = (label, onClick) => {
+    const el = document.createElement("button");
+    el.textContent = label;
+    el.style.cssText = "padding:5px 9px;border-radius:8px;border:1px solid #555;background:#2b2f3a;color:#fff;cursor:pointer;font-size:12px";
+    el.addEventListener("click", onClick);
+    buttonRow.appendChild(el);
+    return el;
+  };
+  const say = (text) => { message.textContent = text; };
+
+  // ── 축·버튼 찾기: 몇 초 동안 가장 많이 변한 것을 고름 ──────────────────────
+  let learning = null;
+  const learn = (prompt, done) => {
+    const pad = getPad();
+    if (!pad) return say("휠이 안 보여요. 휠의 버튼을 한 번 눌러 주세요.");
+    learning = {
+      prompt, done,
+      until: performance.now() + LEARN_SECONDS * 1000,
+      baseAxes: [...pad.axes],
+      axes: pad.axes.map((v) => ({ dev: 0, value: v })),   // 처음 값에서 가장 멀어진 정도와 그때 값
+      buttons: pad.buttons.map(() => 0),                   // 가장 세게 눌린 값
+    };
+  };
+  const updateLearning = (pad, now) => {
+    pad.axes.forEach((v, i) => {
+      const dev = Math.abs(v - learning.baseAxes[i]);
+      if (learning.axes[i] && dev > learning.axes[i].dev) learning.axes[i] = { dev, value: v };
+    });
+    pad.buttons.forEach((b, i) => { learning.buttons[i] = Math.max(learning.buttons[i] || 0, b.value); });
+    const left = Math.ceil((learning.until - now) / 1000);
+    if (left > 0) return say(`${learning.prompt} (${left}초)`);
+    const result = learning;
+    learning = null;
+    result.done(result);
+  };
+  const bestAxis = (r, skip) => {
+    let best = -1;
+    r.axes.forEach((a, i) => { if (i !== skip && (best < 0 || a.dev > r.axes[best].dev)) best = i; });
+    return best;
+  };
+  const bestButton = (r, skip) => {
+    let best = -1;
+    r.buttons.forEach((v, i) => { if (i !== skip && (best < 0 || v > r.buttons[best])) best = i; });
+    return best;
+  };
+
+  button("핸들 찾기", () => learn("핸들을 좌우로 크게 돌리세요", (r) => {
+    const i = bestAxis(r, -1);
+    if (i < 0 || r.axes[i].dev < 0.2) return say("핸들 움직임을 못 찾았어요. 다시 눌러서 더 크게 돌려 보세요.");
+    cfg.steerAxis = i;
+    save();
+    say(`핸들 = 축 ${i}. 핸들을 가운데 두고 [가운데 맞추기]를 누르세요.`);
+  }));
+  button("브레이크 찾기", () => learn("브레이크 페달을 끝까지 밟았다 떼세요", (r) => {
+    const a = bestAxis(r, cfg.steerAxis);
+    const b = bestButton(r, -1);
+    const axisDev = a >= 0 ? r.axes[a].dev : 0;
+    const buttonValue = b >= 0 ? r.buttons[b] : 0;
+    if (axisDev >= 0.3 && axisDev >= buttonValue) {
+      cfg.brake = { type: "axis", index: a, rest: r.baseAxes[a], pressed: r.axes[a].value };
+    } else if (buttonValue >= 0.5) {
+      cfg.brake = { type: "button", index: b, rest: 0, pressed: buttonValue };
+    } else {
+      return say("브레이크를 못 찾았어요. 다시 눌러서 페달을 끝까지 밟아 보세요.");
+    }
+    save();
+    say(`브레이크 = ${cfg.brake.type === "axis" ? "축" : "버튼"} ${cfg.brake.index}`);
+  }));
+  button("가운데 맞추기", () => {
+    const pad = getPad();
+    if (!pad) return say("휠이 안 보여요. 휠의 버튼을 한 번 눌러 주세요.");
+    cfg.center = pad.axes[cfg.steerAxis] || 0;
+    save();
+    say("지금 핸들 위치를 가운데(0도)로 맞췄어요.");
+  });
+  button("좌우 반전", () => {
+    cfg.invert = !cfg.invert;
+    save();
+    say(cfg.invert ? "좌우 반전 켬" : "좌우 반전 끔");
+  });
+  button("회전 범위", () => {
+    const input = prompt("휠의 끝에서 끝까지 회전 각도 (T300 기본 1080). 화면 핸들이 실제보다 많이 돌면 줄이세요.", cfg.rangeDeg);
+    const deg = Number(input);
+    if (!input || !(deg >= 90 && deg <= 1440)) return;
+    cfg.rangeDeg = deg;
+    save();
+    say(`회전 범위 ${deg}도`);
+  });
+  const learnMirror = (key, name) => () => learn(`${name} 미러로 쓸 패들·버튼을 누르세요`, (r) => {
+    const i = bestButton(r, cfg.brake && cfg.brake.type === "button" ? cfg.brake.index : -1);
+    if (i < 0 || r.buttons[i] < 0.5) return say("눌린 버튼을 못 찾았어요.");
+    cfg[key] = i;
+    save();
+    say(`${name} 미러 = 버튼 ${i}`);
+  });
+  button("왼쪽 미러 버튼", learnMirror("prev", "왼쪽"));
+  button("오른쪽 미러 버튼", learnMirror("next", "오른쪽"));
+  button("설정 지우기", () => {
+    localStorage.removeItem(STORE);
+    Object.assign(cfg, { steerAxis: 0, invert: false, rangeDeg: 1080, center: 0, brake: null, prev: null, next: null });
+    say("설정을 지웠어요. [핸들 찾기]부터 다시 하세요.");
+  });
+  document.body.appendChild(panel);
+
+  // ── 매 프레임: 휠 값을 읽어 콘솔에 넣음 ──────────────────────────────────
+  // requestAnimationFrame은 창이 가려지면 멈추므로 setInterval을 씀
+  const tick = () => {
+    const now = performance.now();
+    const pad = getPad();
+    if (!pad) {
+      setBrake(true);
+      title.textContent = "휠 조작: 휠을 찾는 중";
+      values.textContent = "휠의 아무 버튼이나 한 번 눌러 주세요.";
+      return;
+    }
+    title.textContent = `휠 조작: ${pad.id.slice(0, 28)}`;
+    if (learning) updateLearning(pad, now);
+
+    // 핸들: 축 값(-1~1)을 각도로. 휠 끝이 rangeDeg의 절반
+    const raw = pad.axes[cfg.steerAxis] || 0;
+    const angle = Math.max(-MAX, Math.min(MAX, (raw - cfg.center) * (cfg.rangeDeg / 2) * (cfg.invert ? -1 : 1)));
+    setAngle(angle);
+
+    // 브레이크: 뗀 값 0 ~ 밟은 값 1로 바꿔서 판단. 모르면 밟은 것으로 둠
+    let amount = null;
+    if (cfg.brake) {
+      const value = cfg.brake.type === "axis" ? pad.axes[cfg.brake.index] : pad.buttons[cfg.brake.index]?.value;
+      if (value != null) amount = (value - cfg.brake.rest) / (cfg.brake.pressed - cfg.brake.rest);
+    }
+    if (amount === null) setBrake(true);
+    else if (amount > 0.2) setBrake(true);
+    else if (amount < 0.1) setBrake(false);   // 0.1~0.2 사이는 그대로 (경계에서 떨리지 않게)
+
+    // 미러 버튼
+    for (const key of ["prev", "next"]) {
+      if (cfg[key] === null) continue;
+      const down = !!pad.buttons[cfg[key]]?.pressed;
+      if (down !== mirrorHeld[key]) {
+        mirrorHeld[key] = down;
+        sendButton(key, down ? "down" : "up");
+      }
+    }
+
+    values.textContent =
+      `핸들 ${angle.toFixed(0)}° · 브레이크 ` +
+      (amount === null ? "미설정(밟음 유지)" : `${brakeSent ? "밟음" : "뗌"} ${Math.round(Math.max(0, Math.min(1, amount)) * 100)}%`);
+  };
+  setInterval(tick, 16);
+
+  // 창이 가려지면 크롬이 휠 값을 멈추므로 안전하게 브레이크를 밟은 상태로 둠
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) setBrake(true);
+  });
+
+  say(cfg.brake ? "저장된 설정을 불러왔어요." : "[핸들 찾기] → [브레이크 찾기] → [가운데 맞추기] 순서로 설정하세요.");
+  console.log("휠 조작 켜짐: 휠 버튼을 한 번 누른 뒤 오른쪽 위 패널을 보세요");
+})();
