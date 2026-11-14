@@ -196,6 +196,17 @@
     save();
     say("지금 핸들 위치를 가운데(0도)로 맞췄어요.");
   });
+  // 실제 핸들 각도와 화면 각도를 맞춤: 실제로 90도 돌렸을 때의 축 값으로 회전 범위와 방향을 계산.
+  // 드라이버 없이 잡힌 휠은 축 값이 실제 회전 범위와 달라서(조금만 돌려도 끝까지 감) 직접 재야 함.
+  button("90도 맞추기", () => learn("핸들을 오른쪽으로 90도(3시 방향) 돌린 채 기다리세요", () => {
+    const pad = getPad();
+    const offset = pad ? (pad.axes[cfg.steerAxis] || 0) - cfg.center : 0;
+    if (Math.abs(offset) < 0.02) return say("핸들이 가운데에 있어요. 먼저 [가운데 맞추기]를 하고, 90도 돌린 채로 다시 해 보세요.");
+    cfg.rangeDeg = Math.round(180 / Math.abs(offset));   // 축 1 = 휠 끝 = rangeDeg의 절반
+    cfg.invert = offset < 0;                             // 오른쪽으로 돌렸는데 값이 음수면 뒤집음
+    save();
+    say(`맞췄어요. 회전 범위 ${cfg.rangeDeg}도${cfg.invert ? ", 좌우 반전 켬" : ""}. 지금 패널 각도가 90 근처면 정상이에요.`);
+  }));
   button("좌우 반전", () => {
     cfg.invert = !cfg.invert;
     save();
@@ -204,7 +215,7 @@
   button("회전 범위", () => {
     const input = prompt("휠의 끝에서 끝까지 회전 각도 (T300 기본 1080). 화면 핸들이 실제보다 많이 돌면 줄이세요.", cfg.rangeDeg);
     const deg = Number(input);
-    if (!input || !(deg >= 90 && deg <= 1440)) return;
+    if (!input || !(deg >= 90 && deg <= 20000)) return;
     cfg.rangeDeg = deg;
     save();
     say(`회전 범위 ${deg}도`);
