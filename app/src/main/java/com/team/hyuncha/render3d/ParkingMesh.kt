@@ -11,12 +11,14 @@ import kotlin.math.hypot
 
 /** Small glTF writer for map-derived geometry. Batches all faces of each material into one mesh. */
 internal class ParkingMesh {
-    private val positions = List(6) { ArrayList<Float>() }
     private val colors = listOf(
         floatArrayOf(.19f,.215f,.24f,1f), floatArrayOf(.78f,.81f,.83f,1f),
         floatArrayOf(.08f,.7f,.35f,1f), floatArrayOf(.42f,.47f,.53f,1f),
         floatArrayOf(.82f,.58f,.12f,1f), floatArrayOf(.85f,.93f,1f,1f),
+        floatArrayOf(.68f,.70f,.72f,1f),
     )
+    private val positions = List(colors.size) { ArrayList<Float>() }
+    private val wallHeight = 2.8
     fun quad(points: List<Point3>, material: Int) {
         for (i in intArrayOf(0,1,2,0,2,3)) with(points[i]) {
             positions[material].addAll(listOf(x.toFloat(), y.toFloat(), z.toFloat()))
@@ -29,13 +31,23 @@ internal class ParkingMesh {
         val offset = Vec2(-(b.y-a.y)/len*width/2,(b.x-a.x)/len*width/2)
         quad(listOf(a+offset,b+offset,b-offset,a-offset).map { Point3(it.x,height,it.y) },material)
     }
-    fun box(rect: OrientedRect, bottom: Double, top: Double, material: Int) {
-        flat(rect,top,material)
-        val p = rect.corners()
-        for (i in 0..3) {
-            val a=p[i]; val b=p[(i+1)%4]
-            quad(listOf(Point3(a.x,bottom,a.y),Point3(b.x,bottom,b.y),Point3(b.x,top,b.y),Point3(a.x,top,a.y)),material)
+    private fun stripedConcrete(rect: OrientedRect) {
+        val corners = rect.corners()
+        for (i in corners.indices) {
+            val a = corners[i]
+            val b = corners[(i + 1) % corners.size]
+            fun band(bottom: Double, top: Double, material: Int) {
+                quad(listOf(
+                    Point3(a.x, bottom, a.y), Point3(b.x, bottom, b.y),
+                    Point3(b.x, top, b.y), Point3(a.x, top, a.y),
+                ), material)
+            }
+            band(0.0, .2, 4)
+            band(.2, 1.1, 3)
+            band(1.1, 1.22, 4)
+            band(1.22, wallHeight, 3)
         }
+        flat(rect, wallHeight, 3)
     }
     fun build(): ByteBuffer {
         val bin = ByteBuffer.allocate(positions.sumOf { it.size }*4).order(ByteOrder.LITTLE_ENDIAN)
@@ -77,17 +89,8 @@ internal class ParkingMesh {
             flat(map.slot,.008,2)
             val corners=map.slot.corners()
             for (i in corners.indices) strip(corners[i],corners[(i+1)%4],.1,.016,2)
-            map.walls.forEach {
-                box(it,0.0,2.8,3)
-                box(it,0.0,.2,4)
-                box(it,1.1,1.22,4)
-            }
-            // 하드 모드 "기둥 옆 자리"의 기둥 (부딪히면 실패). 벽과 같은 콘크리트 + 띠
-            map.pillars.forEach {
-                box(it,0.0,2.8,3)
-                box(it,0.0,.2,4)
-                box(it,1.1,1.22,4)
-            }
+            map.walls.forEach { stripedConcrete(it) }
+            map.pillars.forEach { stripedConcrete(it) }
         }.build()
 
         /** 서라운드 뷰처럼 위에서 내려다보는 카메라에서는 빼야 해서 천장·조명은 따로 만듦 (CEILING_LAYER에만 보임) */
@@ -95,10 +98,13 @@ internal class ParkingMesh {
         /** 내 차 차체·실내. 룸미러는 이 층을 빼고 그려서 차 안 대신 뒷유리 너머 바깥이 비치게 함 */
         const val OWN_CAR_LAYER = 32
         fun ceiling(map: ParkingMap): ByteBuffer = ParkingMesh().apply {
-            // Overhead fixtures add scale without introducing non-collidable pillars.
-            flat(OrientedRect(Vec2(map.widthM/2,map.heightM/2),map.widthM/2,map.heightM/2,0.0),2.85,0)
-            for (x in 2 until map.widthM.toInt() step 4) {
-                box(OrientedRect(Vec2(x.toDouble(),map.heightM*.3),.9,.08,0.0),2.77,2.8,5)
+            val bounds = OrientedRect(Vec2(map.widthM / 2, map.heightM / 2), map.widthM / 2, map.heightM / 2, 0.0)
+            flat(bounds, wallHeight, 6)
+            for (row in listOf(.3, .7)) {
+                for (x in 2 until map.widthM.toInt() - 1 step 4) {
+                    val panel = OrientedRect(Vec2(x.toDouble(), map.heightM * row), .55, .3, 0.0)
+                    flat(panel, wallHeight - .03, 5)
+                }
             }
         }.build()
     }
