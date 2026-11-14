@@ -6,7 +6,7 @@ Virtual Console에는 핸들의 이전 곡(◀◀)·다음 곡(▶▶) 버튼이
 콘솔 페이지의 키보드 스크립트(Q·E 키)가 이 프로그램에 요청을 보내면
 adb로 에뮬레이터에 진짜 핸들 버튼과 같은 경로(car_service inject-key)로 신호를 넣어줌.
 
-레이싱 휠 스크립트의 전진·후진·다시 하기 버튼은 앱의 키보드 단축키(↑·↓·R)를 눌러 줌.
+레이싱 휠 스크립트의 전진·후진·다시 하기·음성 명령 버튼은 앱의 키보드 단축키(↑·↓·R·V)를 눌러 줌.
 
 - 이 컴퓨터 안(127.0.0.1)에서만 받고, 아래 정해진 버튼만 보낼 수 있음
 - tools/start-console.sh가 자동으로 켜줌. 직접 켜려면:  python3 tools/steering-buttons-bridge.py
@@ -20,9 +20,9 @@ PORT = 8089
 ADB = os.path.join(os.environ.get("ANDROID_HOME", os.path.expanduser("~/Library/Android/sdk")), "platform-tools", "adb")
 KEYS = {"prev": "88", "next": "87"}          # KEYCODE_MEDIA_PREVIOUS / NEXT
 ACTIONS = {"down", "up"}
-# 앱(주차 화면)의 키보드 단축키: ↑ = 전진, ↓ = 후진, R = 다시 하기. 한 번 눌렀다 떼는 것만 보냄
-TAPS = {"forward": "19", "reverse": "20", "restart": "46"}   # KEYCODE_DPAD_UP / DPAD_DOWN / R
-VERSION = "2"                               # start-console.sh가 옛 버전이 켜져 있는지 확인할 때 씀
+# 앱(주차 화면)의 키보드 단축키: ↑ = 전진, ↓ = 후진, R = 다시 하기, V = 음성 명령. 한 번 눌렀다 떼는 것만 보냄
+TAPS = {"forward": "19", "reverse": "20", "restart": "46", "voice": "50"}   # KEYCODE_DPAD_UP / DPAD_DOWN / R / V
+VERSION = "3"                               # start-console.sh가 옛 버전이 켜져 있는지 확인할 때 씀
 CONSOLE = "http://127.0.0.1:8088"           # 요청을 허용할 페이지 (Virtual Console)
 
 
