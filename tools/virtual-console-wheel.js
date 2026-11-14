@@ -86,6 +86,9 @@
   };
   const title = line(true);
   const values = line();
+  // 휠이 보내는 값 그대로 (문제 확인용): 페달을 밟을 때 어느 숫자가 변하는지 눈으로 볼 수 있음
+  const rawLine = line();
+  rawLine.style.cssText = "margin-top:4px;color:#9aa4b2;font:11px/1.4 ui-monospace,monospace;word-break:break-all";
   const message = line();
   message.style.cssText = "margin:6px 0;color:#ffd166;min-height:20px";
   const buttonRow = document.createElement("div");
@@ -149,12 +152,13 @@
     const b = bestButton(r, -1);
     const axisDev = a >= 0 ? r.axes[a].dev : 0;
     const buttonValue = b >= 0 ? r.buttons[b] : 0;
-    if (axisDev >= 0.3 && axisDev >= buttonValue) {
+    // 드라이버 없이 잡힌 휠은 페달 값이 조금만 변하기도 해서 축 기준을 낮게 둠 (핸들 축은 이미 뺐음)
+    if (axisDev >= 0.1 && axisDev >= buttonValue) {
       cfg.brake = { type: "axis", index: a, rest: r.baseAxes[a], pressed: r.axes[a].value };
     } else if (buttonValue >= 0.5) {
       cfg.brake = { type: "button", index: b, rest: 0, pressed: buttonValue };
     } else {
-      return say("브레이크를 못 찾았어요. 다시 눌러서 페달을 끝까지 밟아 보세요.");
+      return say("브레이크를 못 찾았어요. 페달을 밟을 때 위 회색 숫자가 변하는지 보세요. 안 변하면 휠의 버튼·패들을 브레이크로 써도 돼요.");
     }
     save();
     say(`브레이크 = ${cfg.brake.type === "axis" ? "축" : "버튼"} ${cfg.brake.index}`);
@@ -233,6 +237,10 @@
         sendButton(key, down ? "down" : "up");
       }
     }
+
+    const pressedButtons = pad.buttons.map((b, i) => (b.value > 0.05 ? i : null)).filter((i) => i !== null);
+    rawLine.textContent =
+      `축 ${pad.axes.map((v, i) => `${i}:${v.toFixed(2)}`).join(" ")} / 눌린 버튼 ${pressedButtons.join(",") || "없음"}`;
 
     values.textContent =
       `핸들 ${angle.toFixed(0)}° · 브레이크 ` +
